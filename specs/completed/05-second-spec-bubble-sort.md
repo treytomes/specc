@@ -1,7 +1,13 @@
 # Spec 05 — Second Spec: Bubble Sort
 
-**Status:** Ready to implement (after Spec 01)  
-**Scope:** New `examples/BubbleSort/BubbleSort.md`, validation of the pipeline against a second program
+**Status:** Design — pipeline generalization required before implementation  
+**Scope:** New `examples/BubbleSort/BubbleSort.md`, new node types, extensions to SemanticGraph/CFG/StackIR/MSIL passes
+
+> **DEFERRED — not implemented yet.**
+>
+> BubbleSort requires new node types (ArrayNode, IndexNode, SwapNode), nested loop support, comparison-without-modulo, and extensions to nearly every pass. The current pipeline is specialized for the FizzBuzz family (single loop, modulo branches, scalar variable). This spec becomes actionable after a design conversation about how deep the generalization needs to go.
+>
+> **Replaced by:** This spec has been decomposed into Specs 15–19, which implement BubbleSort in two phases: narrow (graph layer, visualization, repository similarity — Specs 15–16) and wide (full compilation to a running binary — Specs 17–19). See those specs for implementation details. The graph repository integration is covered in Spec 16 once Spec 03 is complete.
 
 ## Motivation
 

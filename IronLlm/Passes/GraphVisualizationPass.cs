@@ -226,6 +226,10 @@ public class GraphVisualizationPass : ICompilerPass
         VariableNode   => "#d0d0d0",
         ConstantNode   => "#d0d0d0",
         ComparisonNode => "#d0d0d0",
+        ArrayNode      => "#d4a843",
+        IndexNode      => "#c4a4e0",
+        SwapNode       => "#e08080",
+        NestedLoopNode => "#7ab8c4",
         _              => "#ffffff",
     };
 

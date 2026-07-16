@@ -126,9 +126,34 @@ public class AcceptanceCriteriaPassTests
     [Fact]
     public async Task Execute_Throws_WhenNoLoopNode()
     {
+        // A graph with no ArrayNode and no LoopNode must throw.
         var ctx = PipelineFixtures.MakeContext();
-        ctx.SemanticGraph = new SemanticGraph();
+        var g   = new SemanticGraph();
+        // Add a ProgramNode so the graph isn't completely empty
+        g.Add(new ProgramNode(Guid.NewGuid(), "Program:Test", "Test"));
+        ctx.SemanticGraph = g;
         await Assert.ThrowsAnyAsync<Exception>(() => MakePass().ExecuteAsync(ctx));
+    }
+
+    [Fact]
+    public async Task Execute_SkipsAssertions_WhenGraphHasArrayNode()
+    {
+        var ctx = PipelineFixtures.MakeContext();
+        ctx.SemanticGraph = PipelineFixtures.BuildBubbleSortGraph();
+        await MakePass().ExecuteAsync(ctx);
+        Assert.Empty(ctx.Assertions);
+    }
+
+    [Fact]
+    public async Task Execute_ArrayProgram_DoesNotAddAssertionNodesToGraph()
+    {
+        var ctx = PipelineFixtures.MakeContext();
+        ctx.SemanticGraph = PipelineFixtures.BuildBubbleSortGraph();
+        var nodesBefore = ctx.SemanticGraph.Nodes.Count;
+        await MakePass().ExecuteAsync(ctx);
+        // No AssertionNodes should have been added
+        Assert.Equal(nodesBefore, ctx.SemanticGraph.Nodes.Count);
+        Assert.Empty(ctx.SemanticGraph.Nodes.OfType<AssertionNode>().ToList());
     }
 
     [Fact]

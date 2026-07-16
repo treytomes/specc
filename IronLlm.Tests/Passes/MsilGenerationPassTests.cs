@@ -103,4 +103,51 @@ public class MsilGenerationPassTests
         }
         finally { File.Delete(tmp); }
     }
+
+    // ── Array program tests ────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task Execute_MultipleLocals_EmitsLocalsInitBlock()
+    {
+        var tmpDir = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
+        Directory.CreateDirectory(tmpDir);
+        try
+        {
+            var ctx = await PipelineFixtures.AfterBubbleSortMsilAsync(tmpDir);
+            var il  = ctx.MsilOutput!;
+            Assert.Contains(".locals init", il);
+            // BubbleSort has at least i, j, k, temp (scalars) and arr (array)
+            Assert.Contains("int32[]", il);
+        }
+        finally { Directory.Delete(tmpDir, recursive: true); }
+    }
+
+    [Fact]
+    public async Task Execute_ArrayProgram_EmitsNewArrAndStelemI4()
+    {
+        var tmpDir = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
+        Directory.CreateDirectory(tmpDir);
+        try
+        {
+            var ctx = await PipelineFixtures.AfterBubbleSortMsilAsync(tmpDir);
+            var il  = ctx.MsilOutput!;
+            Assert.Contains("newarr", il);
+            Assert.Contains("stelem.i4", il);
+        }
+        finally { Directory.Delete(tmpDir, recursive: true); }
+    }
+
+    [Fact]
+    public async Task Execute_ArrayProgram_EmitsLdelemI4()
+    {
+        var tmpDir = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
+        Directory.CreateDirectory(tmpDir);
+        try
+        {
+            var ctx = await PipelineFixtures.AfterBubbleSortMsilAsync(tmpDir);
+            var il  = ctx.MsilOutput!;
+            Assert.Contains("ldelem.i4", il);
+        }
+        finally { Directory.Delete(tmpDir, recursive: true); }
+    }
 }

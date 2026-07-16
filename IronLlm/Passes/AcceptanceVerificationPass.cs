@@ -60,11 +60,15 @@ public class AcceptanceVerificationPass : ICompilerPass
             Name, sw.ElapsedMilliseconds, assertions.Count, assertions.Count);
     }
 
+    private static bool IsExecutable(string path) =>
+        !OperatingSystem.IsWindows() &&
+        (File.GetUnixFileMode(path) & UnixFileMode.UserExecute) != 0;
+
     private static async Task<string> RunAsync(string launcher, string? assemblyPath)
     {
         ProcessStartInfo psi;
 
-        if (File.Exists(launcher) && (File.GetUnixFileMode(launcher) & UnixFileMode.UserExecute) != 0)
+        if (File.Exists(launcher) && IsExecutable(launcher))
         {
             psi = new ProcessStartInfo(launcher)
             {

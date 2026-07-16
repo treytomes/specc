@@ -117,22 +117,51 @@ public class SemanticGraphPass : ICompilerPass
 
     private static void BuildLoopNode(string[] lines, SemanticGraph graph, ProgramNode? program)
     {
+        // Handle multiple loop: sections (e.g. outer + nested loop).
+        // When to: is not a literal integer, emit a NestedLoopNode with the expression as BoundExpr.
         bool inLoop = false;
-        int? from = null, to = null;
+        int? from = null;
+        string? toRaw = null;
+        string? varName = null;
+
+        void FlushLoop()
+        {
+            if (from == null || toRaw == null) return;
+            if (int.TryParse(toRaw, out var toInt))
+            {
+                var loopNode = new LoopNode(Guid.NewGuid(), $"Loop:{from}..{toInt}", from.Value, toInt);
+                graph.Add(loopNode);
+                if (program != null) graph.Connect(program.Id, loopNode.Id, EdgeType.Contains);
+            }
+            else
+            {
+                var v = varName ?? "i";
+                var node = new NestedLoopNode(Guid.NewGuid(), $"NestedLoop:{v}<{toRaw}", v, from.Value, toRaw);
+                graph.Add(node);
+                if (program != null) graph.Connect(program.Id, node.Id, EdgeType.Contains);
+            }
+            from = null; toRaw = null;
+        }
+
         foreach (var line in lines)
         {
-            if (line == "loop:") { inLoop = true; continue; }
-            if (inLoop && line.StartsWith("from:")) from = int.Parse(line["from:".Length..].Trim());
-            if (inLoop && line.StartsWith("to:")) to = int.Parse(line["to:".Length..].Trim());
-            if (inLoop && line.StartsWith("branch:")) break;
+            if (line == "loop:")
+            {
+                FlushLoop();
+                inLoop = true;
+                continue;
+            }
+            if (!inLoop) continue;
+
+            if (line.StartsWith("from:"))      { from    = int.TryParse(line["from:".Length..].Trim(), out var f) ? f : 0; continue; }
+            if (line.StartsWith("to:"))        { toRaw   = line["to:".Length..].Trim(); continue; }
+            if (line.StartsWith("variable:"))  { inLoop  = false; FlushLoop(); continue; }
+            if (line.StartsWith("branch:"))    { inLoop  = false; FlushLoop(); continue; }
         }
-        if (from.HasValue && to.HasValue)
-        {
-            var loopNode = new LoopNode(Guid.NewGuid(), $"Loop:{from}..{to}", from.Value, to.Value);
-            graph.Add(loopNode);
-            if (program != null)
-                graph.Connect(program.Id, loopNode.Id, EdgeType.Contains);
-        }
+        FlushLoop();
+
+        // Capture variable name for the outer loop label from the first variable: section.
+        _ = varName; // suppress unused warning; variable used inside closure above
     }
 
     private static void BuildVariableNode(string[] lines, SemanticGraph graph, ProgramNode? program)
@@ -141,16 +170,37 @@ public class SemanticGraphPass : ICompilerPass
         string? name = null, type = null;
         foreach (var line in lines)
         {
-            if (line == "variable:") { inVar = true; continue; }
-            if (inVar && line.StartsWith("name:")) name = line["name:".Length..].Trim();
-            if (inVar && line.StartsWith("type:")) type = line["type:".Length..].Trim();
+            if (line == "variable:") { inVar = true; name = null; type = null; continue; }
+            if (!inVar) continue;
+            if (line.StartsWith("name:")) { name = line["name:".Length..].Trim(); continue; }
+            if (line.StartsWith("type:")) { type = line["type:".Length..].Trim(); continue; }
+
+            // Flush on any non-variable keyword
+            if ((line.StartsWith("branch:") || line.StartsWith("loop:") || line.StartsWith("program:")) && name != null && type != null)
+            {
+                EmitVariable(graph, program, name, type);
+                inVar = false; name = null; type = null;
+            }
         }
         if (name != null && type != null)
+            EmitVariable(graph, program, name, type);
+    }
+
+    private static void EmitVariable(SemanticGraph graph, ProgramNode? program, string name, string type)
+    {
+        // int[N] → ArrayNode; plain type → VariableNode
+        var arrayMatch = System.Text.RegularExpressions.Regex.Match(type, @"^int\[(\d+)\]$");
+        if (arrayMatch.Success && int.TryParse(arrayMatch.Groups[1].Value, out var size))
+        {
+            var arr = new ArrayNode(Guid.NewGuid(), $"Array:{name}[{size}]", name, "int", size);
+            graph.Add(arr);
+            if (program != null) graph.Connect(program.Id, arr.Id, EdgeType.Contains);
+        }
+        else
         {
             var varNode = new VariableNode(Guid.NewGuid(), $"Var:{name}", name, type);
             graph.Add(varNode);
-            if (program != null)
-                graph.Connect(program.Id, varNode.Id, EdgeType.Contains);
+            if (program != null) graph.Connect(program.Id, varNode.Id, EdgeType.Contains);
         }
     }
 }

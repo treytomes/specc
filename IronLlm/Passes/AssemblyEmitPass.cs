@@ -54,7 +54,39 @@ public class AssemblyEmitPass : ICompilerPass
             Type.EmptyTypes);
 
         var il = methBuilder.GetILGenerator();
-        il.DeclareLocal(typeof(int));   // local 0 = n
+
+        // ── Collect locals in first-appearance order (same logic as MsilGenerationPass) ──
+        var localOrder  = new List<string>();
+        var arrayLocals = new HashSet<string>();
+
+        foreach (var instr in context.StackIr)
+        {
+            switch (instr.Op)
+            {
+                case IrOp.StlocS:
+                case IrOp.LdlocS:
+                    if (instr.Operand != null && !localOrder.Contains(instr.Operand))
+                        localOrder.Add(instr.Operand);
+                    break;
+                case IrOp.LdlocA:
+                case IrOp.StlocA:
+                    if (instr.Operand != null)
+                    {
+                        arrayLocals.Add(instr.Operand);
+                        if (!localOrder.Contains(instr.Operand))
+                            localOrder.Add(instr.Operand);
+                    }
+                    break;
+            }
+        }
+
+        // Declare locals and build index map name → LocalBuilder
+        var localBuilders = new Dictionary<string, LocalBuilder>();
+        foreach (var name in localOrder)
+        {
+            var type = arrayLocals.Contains(name) ? typeof(int[]) : typeof(int);
+            localBuilders[name] = il.DeclareLocal(type);
+        }
 
         // All labels must be defined before any are marked
         var labels = new Dictionary<string, Label>();
@@ -76,13 +108,22 @@ public class AssemblyEmitPass : ICompilerPass
                     il.Emit(OpCodes.Ldc_I4, int.Parse(instr.Operand!));
                     break;
                 case IrOp.LdlocS:
-                    il.Emit(OpCodes.Ldloc_0);
+                    il.Emit(OpCodes.Ldloc, localBuilders[instr.Operand!]);
                     break;
                 case IrOp.StlocS:
-                    il.Emit(OpCodes.Stloc_0);
+                    il.Emit(OpCodes.Stloc, localBuilders[instr.Operand!]);
+                    break;
+                case IrOp.LdlocA:
+                    il.Emit(OpCodes.Ldloc, localBuilders[instr.Operand!]);
+                    break;
+                case IrOp.StlocA:
+                    il.Emit(OpCodes.Stloc, localBuilders[instr.Operand!]);
                     break;
                 case IrOp.Add:
                     il.Emit(OpCodes.Add);
+                    break;
+                case IrOp.Sub:
+                    il.Emit(OpCodes.Sub);
                     break;
                 case IrOp.Rem:
                     il.Emit(OpCodes.Rem);
@@ -92,6 +133,15 @@ public class AssemblyEmitPass : ICompilerPass
                     break;
                 case IrOp.Cgt:
                     il.Emit(OpCodes.Cgt);
+                    break;
+                case IrOp.Newarr:
+                    il.Emit(OpCodes.Newarr, typeof(int));
+                    break;
+                case IrOp.LdelemI4:
+                    il.Emit(OpCodes.Ldelem_I4);
+                    break;
+                case IrOp.StelemI4:
+                    il.Emit(OpCodes.Stelem_I4);
                     break;
                 case IrOp.Brfalse:
                     il.Emit(OpCodes.Brfalse, labels[instr.Operand!]);

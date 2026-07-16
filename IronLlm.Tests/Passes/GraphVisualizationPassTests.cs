@@ -162,6 +162,44 @@ public class GraphVisualizationPassTests
         Assert.DoesNotContain("A&B\"", svg);
     }
 
+    // ── New node type colors ──────────────────────────────────────────────────
+
+    [Fact]
+    public void BuildSvg_ArrayNode_HasAmberColor()
+    {
+        var id   = Guid.NewGuid();
+        var node = new ArrayNode(id, "Array:arr[10]", "arr", "int", 10);
+        var svg  = GraphVisualizationPass.BuildSvg([node], []);
+        Assert.Contains("#d4a843", svg);
+    }
+
+    [Fact]
+    public void BuildSvg_IndexNode_HasLavenderColor()
+    {
+        var id   = Guid.NewGuid();
+        var node = new IndexNode(id, "Index:arr[i]", "arr", "i");
+        var svg  = GraphVisualizationPass.BuildSvg([node], []);
+        Assert.Contains("#c4a4e0", svg);
+    }
+
+    [Fact]
+    public void BuildSvg_SwapNode_HasSalmonColor()
+    {
+        var id   = Guid.NewGuid();
+        var node = new SwapNode(id, "Swap:arr[j↔j+1]", "arr", "j", "j+1");
+        var svg  = GraphVisualizationPass.BuildSvg([node], []);
+        Assert.Contains("#e08080", svg);
+    }
+
+    [Fact]
+    public void BuildSvg_NestedLoopNode_HasTealColor()
+    {
+        var id   = Guid.NewGuid();
+        var node = new NestedLoopNode(id, "NestedLoop:j<n-1", "j", 0, "n-1");
+        var svg  = GraphVisualizationPass.BuildSvg([node], []);
+        Assert.Contains("#7ab8c4", svg);
+    }
+
     // ── LoadFromArtifact is a no-op ───────────────────────────────────────────
 
     [Fact]

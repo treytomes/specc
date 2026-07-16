@@ -30,6 +30,31 @@ public class AcceptanceCriteriaPass : ICompilerPass
         var graph = context.SemanticGraph
             ?? throw new InvalidOperationException("SemanticGraph not set");
 
+        // Array programs require running the sort to determine expected output — graph-derived
+        // assertions cannot be computed statically.
+        var arrayNode = graph.Nodes.OfType<ArrayNode>().FirstOrDefault();
+        if (arrayNode != null)
+        {
+            context.Assertions = [];
+
+            // Validate authorial assertions against the array size. The LLM sometimes
+            // produces an incorrect count or wrong values; discard them if the count
+            // doesn't match the expected output line count (one line per array element).
+            if (context.AuthorialAssertions.Count != arrayNode.Size)
+            {
+                if (context.AuthorialAssertions.Count > 0)
+                    _logger.LogWarning(
+                        "Discarding {Count} authorial assertions — expected {Size} (one per array element)",
+                        context.AuthorialAssertions.Count, arrayNode.Size);
+                context.AuthorialAssertions = [];
+            }
+
+            _logger.LogInformation(
+                "Array program detected — skipping graph-derived assertions ({Authorial} authorial assertion(s) available)",
+                context.AuthorialAssertions.Count);
+            return Task.CompletedTask;
+        }
+
         var sw       = Stopwatch.StartNew();
         var loop     = graph.Nodes.OfType<LoopNode>().FirstOrDefault()
                        ?? throw new InvalidOperationException("No LoopNode in graph — cannot derive acceptance criteria");
@@ -92,6 +117,7 @@ public class AcceptanceCriteriaPass : ICompilerPass
         }
 
         // Add AssertionNodes to the graph so the expected output is a first-class graph citizen.
+
         foreach (var a in assertions)
         {
             var node = new AssertionNode(Guid.NewGuid(), $"Assert:{a.Iteration}={a.Expected}", a.Iteration, a.Expected);

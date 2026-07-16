@@ -1,4 +1,5 @@
 using IronLlm.Graph;
+using IronLlm.Passes.Repository;
 
 namespace IronLlm.Passes;
 
@@ -16,7 +17,12 @@ public class CompilationContext
     public List<AssertionRecord> Assertions { get; set; } = [];
     public List<AssertionRecord> AuthorialAssertions { get; set; } = [];
 
+    public ValidationReport? ValidationReport { get; set; }
+
     public string? MsilOutput    { get; set; }
     public string? AssemblyPath  { get; set; }
     public string? LauncherPath  { get; set; }
+
+    public string RepositoryPath { get; set; } = "repository";
+    public List<SimilarPrior> SimilarPriors { get; set; } = [];
 }

@@ -38,14 +38,14 @@ dotnet run \
     --project "$REPO_ROOT/IronLlm/IronLlm.csproj" \
     -- compile --spec "$SPEC" --out "$ARTIFACTS" "$@"
 
-# Run the compiled binary if it exists
-PROGRAM_NAME="$(basename "$FOLDER")"
-LAUNCHER="$ARTIFACTS/$PROGRAM_NAME"
+# Run the compiled binary: find the first non-dll executable in artifacts
+LAUNCHER="$(find "$ARTIFACTS" -maxdepth 1 -type f ! -name '*.dll' ! -name '*.json' ! -name '*.il' ! -name '*.mmd' ! -name '*.svg' -perm /u+x 2>/dev/null | head -1)"
+DLL="$(find "$ARTIFACTS" -maxdepth 1 -name '07-program.dll' | head -1)"
 
-if [[ -x "$LAUNCHER" ]]; then
+if [[ -n "$LAUNCHER" && -x "$LAUNCHER" ]]; then
     echo
     "$LAUNCHER"
-elif [[ -f "$ARTIFACTS/$PROGRAM_NAME.dll" ]]; then
+elif [[ -n "$DLL" ]]; then
     echo
-    dotnet "$ARTIFACTS/$PROGRAM_NAME.dll"
+    dotnet "$DLL"
 fi

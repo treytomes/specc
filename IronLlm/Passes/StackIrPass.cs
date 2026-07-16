@@ -86,6 +86,33 @@ public class StackIrPass : ICompilerPass
     {
         var s = instr.Trim();
 
+        // "newarr {name} {size}" — allocate int array and store in named local
+        // Must come before the generic init pattern.
+        var newarrMatch = Regex.Match(s, @"^newarr\s+(\w+)\s+(\d+)$");
+        if (newarrMatch.Success)
+        {
+            var arrName = newarrMatch.Groups[1].Value;
+            var size    = newarrMatch.Groups[2].Value;
+            yield return new(OpCode.LdcI4,  size);
+            yield return new(OpCode.Newarr);
+            yield return new(OpCode.StlocA, arrName);
+            yield break;
+        }
+
+        // "arr[{idx}] = {value}" — store int constant into array element
+        var arrInitMatch = Regex.Match(s, @"^(\w+)\[(\d+)\]\s*=\s*(-?\d+)$");
+        if (arrInitMatch.Success)
+        {
+            var arrName = arrInitMatch.Groups[1].Value;
+            var idx     = arrInitMatch.Groups[2].Value;
+            var val     = arrInitMatch.Groups[3].Value;
+            yield return new(OpCode.LdlocA,   arrName);
+            yield return new(OpCode.LdcI4,    idx);
+            yield return new(OpCode.LdcI4,    val);
+            yield return new(OpCode.StelemI4);
+            yield break;
+        }
+
         // "{var} = {int}" — loop variable init, e.g. "n = 1"
         // Must not match "{var} = {var} + 1" (increment).
         var initMatch = Regex.Match(s, @"^(\w+)\s*=\s*(-?\d+)$");
@@ -96,12 +123,24 @@ public class StackIrPass : ICompilerPass
             yield break;
         }
 
-        // "if {var} > {int} goto exit" — loop termination test
+        // "if {var} > {int} goto {label}" — loop termination test (flat loop)
         var loopTestMatch = Regex.Match(s, @"^if\s+(\w+)\s*>\s*(-?\d+)\s+goto\s+\w+$");
         if (loopTestMatch.Success)
         {
             yield return new(OpCode.LdlocS, loopTestMatch.Groups[1].Value);
             yield return new(OpCode.LdcI4,  loopTestMatch.Groups[2].Value);
+            yield return new(OpCode.Cgt);
+            yield break;
+        }
+
+        // "if {var} > ({int} - {var2}) goto {label}" — dynamic inner loop bound test
+        var dynBoundMatch = Regex.Match(s, @"^if\s+(\w+)\s*>\s*\((\d+)\s*-\s*(\w+)\)\s+goto\s+\w+$");
+        if (dynBoundMatch.Success)
+        {
+            yield return new(OpCode.LdlocS, dynBoundMatch.Groups[1].Value);   // j
+            yield return new(OpCode.LdcI4,  dynBoundMatch.Groups[2].Value);   // outerBound
+            yield return new(OpCode.LdlocS, dynBoundMatch.Groups[3].Value);   // i
+            yield return new(OpCode.Sub);
             yield return new(OpCode.Cgt);
             yield break;
         }
@@ -115,6 +154,70 @@ public class StackIrPass : ICompilerPass
             yield return new(OpCode.Rem);
             yield return new(OpCode.LdcI4,  "0");
             yield return new(OpCode.Ceq);
+            yield break;
+        }
+
+        // "if {arr}[{idx}] > {arr}[{idx}+1]" — array element comparison
+        var arrCmpMatch = Regex.Match(s, @"^if\s+(\w+)\[(\w+)\]\s*>\s*\1\[(\w+)\+1\]$");
+        if (arrCmpMatch.Success)
+        {
+            var arrName = arrCmpMatch.Groups[1].Value;
+            var idxVar  = arrCmpMatch.Groups[2].Value;
+            yield return new(OpCode.LdlocA,   arrName);
+            yield return new(OpCode.LdlocS,   idxVar);
+            yield return new(OpCode.LdelemI4);
+            yield return new(OpCode.LdlocA,   arrName);
+            yield return new(OpCode.LdlocS,   idxVar);
+            yield return new(OpCode.LdcI4,    "1");
+            yield return new(OpCode.Add);
+            yield return new(OpCode.LdelemI4);
+            yield return new(OpCode.Cgt);
+            yield break;
+        }
+
+        // "swap {arr}[{idx}] {arr}[{idx}+1]" — swap two adjacent array elements via temp
+        var swapMatch = Regex.Match(s, @"^swap\s+(\w+)\[(\w+)\]\s+\1\[(\w+)\+1\]$");
+        if (swapMatch.Success)
+        {
+            var arrName = swapMatch.Groups[1].Value;
+            var idxVar  = swapMatch.Groups[2].Value;
+
+            // temp = arr[j]
+            yield return new(OpCode.LdlocA,   arrName);
+            yield return new(OpCode.LdlocS,   idxVar);
+            yield return new(OpCode.LdelemI4);
+            yield return new(OpCode.StlocS,   "temp");
+
+            // arr[j] = arr[j+1]
+            yield return new(OpCode.LdlocA,   arrName);
+            yield return new(OpCode.LdlocS,   idxVar);
+            yield return new(OpCode.LdlocA,   arrName);
+            yield return new(OpCode.LdlocS,   idxVar);
+            yield return new(OpCode.LdcI4,    "1");
+            yield return new(OpCode.Add);
+            yield return new(OpCode.LdelemI4);
+            yield return new(OpCode.StelemI4);
+
+            // arr[j+1] = temp
+            yield return new(OpCode.LdlocA,   arrName);
+            yield return new(OpCode.LdlocS,   idxVar);
+            yield return new(OpCode.LdcI4,    "1");
+            yield return new(OpCode.Add);
+            yield return new(OpCode.LdlocS,   "temp");
+            yield return new(OpCode.StelemI4);
+            yield break;
+        }
+
+        // "print {arr}[{idx}]" — print array element
+        var printArrMatch = Regex.Match(s, @"^print\s+(\w+)\[(\w+)\]$");
+        if (printArrMatch.Success)
+        {
+            var arrName = printArrMatch.Groups[1].Value;
+            var idxVar  = printArrMatch.Groups[2].Value;
+            yield return new(OpCode.LdlocA,   arrName);
+            yield return new(OpCode.LdlocS,   idxVar);
+            yield return new(OpCode.LdelemI4);
+            yield return new(OpCode.Call,     "Console.WriteLine(int)");
             yield break;
         }
 

@@ -90,4 +90,56 @@ internal static class PipelineFixtures
         MakeStackIrPass().ExecuteAsync(ctx).GetAwaiter().GetResult();
         return ctx;
     }
+
+    /// <summary>
+    /// Builds the BubbleSort semantic graph directly (no LLM required).
+    /// </summary>
+    public static IronLlm.Graph.SemanticGraph BuildBubbleSortGraph()
+    {
+        var graph   = new IronLlm.Graph.SemanticGraph();
+        var program = new IronLlm.Graph.ProgramNode(
+            Guid.NewGuid(), "Program:BubbleSort", "BubbleSort");
+        var arr = new IronLlm.Graph.ArrayNode(
+            Guid.NewGuid(), "Array:arr[10]", "arr", "int", 10,
+            new[] { 64, 34, 25, 12, 22, 11, 90, 45, 78, 3 });
+        var outerLoop = new IronLlm.Graph.LoopNode(
+            Guid.NewGuid(), "Loop:i:0..8", 0, 8);
+        var innerLoop = new IronLlm.Graph.NestedLoopNode(
+            Guid.NewGuid(), "NestedLoop:j<(8-i)", "j", 0, "(8-i)");
+        var swapNode = new IronLlm.Graph.SwapNode(
+            Guid.NewGuid(), "Swap:arr[j]<->arr[j+1]", "arr", "j", "j+1");
+
+        graph.Add(program);
+        graph.Add(arr);
+        graph.Add(outerLoop);
+        graph.Add(innerLoop);
+        graph.Add(swapNode);
+
+        graph.Connect(program.Id,  arr.Id,       IronLlm.Graph.EdgeType.Contains);
+        graph.Connect(program.Id,  outerLoop.Id, IronLlm.Graph.EdgeType.Contains);
+        graph.Connect(program.Id,  innerLoop.Id, IronLlm.Graph.EdgeType.Contains);
+        graph.Connect(program.Id,  swapNode.Id,  IronLlm.Graph.EdgeType.Contains);
+
+        return graph;
+    }
+
+    /// <summary>
+    /// Runs the BubbleSort graph through AcceptanceCriteria, CFG, StackIR, and MSIL passes.
+    /// </summary>
+    public static async Task<CompilationContext> AfterBubbleSortMsilAsync(string artifactsDir)
+    {
+        var ctx = new CompilationContext
+        {
+            SpecPath     = "fake.spec",
+            ArtifactsDir = artifactsDir,
+        };
+        ctx.SemanticGraph = BuildBubbleSortGraph();
+        await new AcceptanceCriteriaPass(
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<AcceptanceCriteriaPass>.Instance)
+            .ExecuteAsync(ctx);
+        await MakeCfgPass().ExecuteAsync(ctx);
+        await MakeStackIrPass().ExecuteAsync(ctx);
+        await MakeMsilGenerationPass().ExecuteAsync(ctx);
+        return ctx;
+    }
 }

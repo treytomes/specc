@@ -54,8 +54,7 @@ public class ExampleProgramTests : IDisposable
             RedirectStandardOutput = true,
             UseShellExecute        = false,
         };
-        if (!System.IO.File.Exists(launcher) ||
-            (System.IO.File.GetUnixFileMode(launcher) & UnixFileMode.UserExecute) == 0)
+        if (!System.IO.File.Exists(launcher) || !IsExecutable(launcher))
         {
             psi = new System.Diagnostics.ProcessStartInfo("dotnet", launcher)
             {
@@ -69,6 +68,10 @@ public class ExampleProgramTests : IDisposable
         return stdout.Split('\n', StringSplitOptions.RemoveEmptyEntries)
                      .Select(l => l.TrimEnd('\r')).ToArray();
     }
+
+    private static bool IsExecutable(string path) =>
+        !OperatingSystem.IsWindows() &&
+        (File.GetUnixFileMode(path) & UnixFileMode.UserExecute) != 0;
 
     // ── Fizz (single branch, 30 iterations) ──────────────────────────────────
 
@@ -235,5 +238,67 @@ public class ExampleProgramTests : IDisposable
     {
         var ctx = await CompileSpec(FizzBuzzHundredSpec);
         Assert.Equal(100, ctx.Assertions.Count);
+    }
+
+    // ── BubbleSort (array program, no spec text — build graph directly) ───────
+
+    private async Task<CompilationContext> CompileBubbleSort()
+    {
+        var ctx = new CompilationContext
+        {
+            SpecPath     = "fake.spec",
+            ArtifactsDir = _artifactsDir,
+        };
+        ctx.SemanticGraph = PipelineFixtures.BuildBubbleSortGraph();
+        await new AcceptanceCriteriaPass(NullLogger<AcceptanceCriteriaPass>.Instance).ExecuteAsync(ctx);
+        await PipelineFixtures.MakeCfgPass().ExecuteAsync(ctx);
+        await PipelineFixtures.MakeStackIrPass().ExecuteAsync(ctx);
+        await PipelineFixtures.MakeMsilGenerationPass().ExecuteAsync(ctx);
+        await new AssemblyEmitPass(NullLogger<AssemblyEmitPass>.Instance).ExecuteAsync(ctx);
+        return ctx;
+    }
+
+    private static async Task<string[]> RunBubbleSortAndGetLines(CompilationContext ctx)
+    {
+        var launcher = ctx.LauncherPath ?? ctx.AssemblyPath!;
+        System.Diagnostics.ProcessStartInfo psi;
+        if (System.IO.File.Exists(launcher) && IsExecutable(launcher))
+        {
+            psi = new System.Diagnostics.ProcessStartInfo(launcher)
+            {
+                RedirectStandardOutput = true,
+                UseShellExecute        = false,
+            };
+        }
+        else
+        {
+            psi = new System.Diagnostics.ProcessStartInfo("dotnet", launcher)
+            {
+                RedirectStandardOutput = true,
+                UseShellExecute        = false,
+            };
+        }
+        using var p = System.Diagnostics.Process.Start(psi)!;
+        var stdout = await p.StandardOutput.ReadToEndAsync();
+        await p.WaitForExitAsync();
+        return stdout.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+                     .Select(l => l.TrimEnd('\r')).ToArray();
+    }
+
+    [Fact]
+    public async Task BubbleSort_Produces10Lines()
+    {
+        var ctx   = await CompileBubbleSort();
+        var lines = await RunBubbleSortAndGetLines(ctx);
+        Assert.Equal(10, lines.Length);
+    }
+
+    [Fact]
+    public async Task BubbleSort_OutputIsSorted()
+    {
+        var ctx   = await CompileBubbleSort();
+        var lines = await RunBubbleSortAndGetLines(ctx);
+        var expected = new[] { "3", "11", "12", "22", "25", "34", "45", "64", "78", "90" };
+        Assert.Equal(expected, lines);
     }
 }

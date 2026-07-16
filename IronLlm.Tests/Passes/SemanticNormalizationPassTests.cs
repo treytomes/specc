@@ -9,17 +9,18 @@ namespace IronLlm.Tests.Passes;
 /// <summary>
 /// Uses a deterministic one-hot mock embedder so tests are hermetic and fast.
 ///
-/// The reference corpus has 8 entries (indices 0-7 map to the ReferenceCorpus array
+/// The reference corpus has 12 entries (indices 0-11 map to the ReferenceCorpus array
 /// order in SemanticNormalizationPass). The mock assigns each description a unit
 /// vector in the dimension equal to its position in the corpus.
 ///
 /// Corpus order (matches SemanticNormalizationPass.ReferenceCorpus):
 ///   0=Program  1=Loop  2=Branch  3=Print
 ///   4=Modulo   5=Variable  6=Constant  7=Comparison
+///   8=Array    9=Index    10=Swap    11=NestedLoop
 /// </summary>
 public class SemanticNormalizationPassTests
 {
-    private const int Dims = 8;
+    private const int Dims = 12;
 
     // Builds a unit vector with a 1.0 in the given dimension, 0s elsewhere.
     private static float[] OneHot(int dim)
@@ -44,6 +45,10 @@ public class SemanticNormalizationPassTests
             "An integer variable declaration.",
             "An integer literal constant.",
             "A comparison between two integer values.",
+            "An array of integer values with a fixed size.",
+            "Access to an array element by index position.",
+            "Swap two elements in an array.",
+            "An inner loop whose upper bound depends on an outer loop variable.",
         ];
 
         public Task<GeneratedEmbeddings<Embedding<float>>> GenerateAsync(
@@ -207,6 +212,118 @@ public class SemanticNormalizationPassTests
             Assert.Single(loaded.SemanticGraph.Nodes);
         }
         finally { File.Delete(tmp); }
+    }
+
+    // ── KindOf reflection tests ───────────────────────────────────────────────
+
+    private static string InvokeKindOf(Node node)
+    {
+        var method = typeof(SemanticNormalizationPass)
+            .GetMethod("KindOf",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
+        return (string)method.Invoke(null, [node])!;
+    }
+
+    private static string InvokeNormalizeLabel(Node node)
+    {
+        var method = typeof(SemanticNormalizationPass)
+            .GetMethod("NormalizeLabel",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
+        return (string)method.Invoke(null, [node])!;
+    }
+
+    [Fact]
+    public void KindOf_ReturnsArray_ForArrayNode()
+    {
+        var node = new ArrayNode(Guid.NewGuid(), "Array:arr[10]", "arr", "int", 10);
+        Assert.Equal("Array", InvokeKindOf(node));
+    }
+
+    [Fact]
+    public void KindOf_ReturnsIndex_ForIndexNode()
+    {
+        var node = new IndexNode(Guid.NewGuid(), "Index:arr[i]", "arr", "i");
+        Assert.Equal("Index", InvokeKindOf(node));
+    }
+
+    [Fact]
+    public void KindOf_ReturnsSwap_ForSwapNode()
+    {
+        var node = new SwapNode(Guid.NewGuid(), "Swap:arr[j↔j+1]", "arr", "j", "j+1");
+        Assert.Equal("Swap", InvokeKindOf(node));
+    }
+
+    [Fact]
+    public void KindOf_ReturnsNestedLoop_ForNestedLoopNode()
+    {
+        var node = new NestedLoopNode(Guid.NewGuid(), "NestedLoop:j<n-1", "j", 0, "n-1");
+        Assert.Equal("NestedLoop", InvokeKindOf(node));
+    }
+
+    [Fact]
+    public void NormalizeLabel_ArrayNode_Format()
+    {
+        var node = new ArrayNode(Guid.NewGuid(), "some array", "arr", "int", 10);
+        Assert.Equal("Array:arr[10]", InvokeNormalizeLabel(node));
+    }
+
+    [Fact]
+    public void NormalizeLabel_IndexNode_Format()
+    {
+        var node = new IndexNode(Guid.NewGuid(), "some index", "arr", "i");
+        Assert.Equal("Index:arr[i]", InvokeNormalizeLabel(node));
+    }
+
+    [Fact]
+    public void NormalizeLabel_SwapNode_Format()
+    {
+        var node = new SwapNode(Guid.NewGuid(), "some swap", "arr", "j", "j+1");
+        Assert.Equal("Swap:arr[j↔j+1]", InvokeNormalizeLabel(node));
+    }
+
+    [Fact]
+    public void NormalizeLabel_NestedLoopNode_Format()
+    {
+        var node = new NestedLoopNode(Guid.NewGuid(), "some nested loop", "j", 0, "n-1");
+        Assert.Equal("NestedLoop:j<n-1", InvokeNormalizeLabel(node));
+    }
+
+    // ── Execute tests for new node types ─────────────────────────────────────
+
+    [Fact]
+    public async Task Execute_NormalizesLabel_ForArrayNode()
+    {
+        var node = new ArrayNode(Guid.NewGuid(), "an array of integers", "arr", "int", 10);
+        var (pass, ctx) = BuildContext([(node, 8)]);  // 8=Array
+        await pass.ExecuteAsync(ctx);
+        Assert.Equal("Array:arr[10]", ctx.SemanticGraph!.Nodes[0].Label);
+    }
+
+    [Fact]
+    public async Task Execute_NormalizesLabel_ForIndexNode()
+    {
+        var node = new IndexNode(Guid.NewGuid(), "access array element by index", "arr", "i");
+        var (pass, ctx) = BuildContext([(node, 9)]);  // 9=Index
+        await pass.ExecuteAsync(ctx);
+        Assert.Equal("Index:arr[i]", ctx.SemanticGraph!.Nodes[0].Label);
+    }
+
+    [Fact]
+    public async Task Execute_NormalizesLabel_ForSwapNode()
+    {
+        var node = new SwapNode(Guid.NewGuid(), "swap two array elements", "arr", "j", "j+1");
+        var (pass, ctx) = BuildContext([(node, 10)]);  // 10=Swap
+        await pass.ExecuteAsync(ctx);
+        Assert.Equal("Swap:arr[j↔j+1]", ctx.SemanticGraph!.Nodes[0].Label);
+    }
+
+    [Fact]
+    public async Task Execute_NormalizesLabel_ForNestedLoopNode()
+    {
+        var node = new NestedLoopNode(Guid.NewGuid(), "inner loop bounded by outer", "j", 0, "n-1");
+        var (pass, ctx) = BuildContext([(node, 11)]);  // 11=NestedLoop
+        await pass.ExecuteAsync(ctx);
+        Assert.Equal("NestedLoop:j<n-1", ctx.SemanticGraph!.Nodes[0].Label);
     }
 
     // ── CosineSimilarity unit tests ───────────────────────────────────────────

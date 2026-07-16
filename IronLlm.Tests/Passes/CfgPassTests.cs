@@ -121,4 +121,71 @@ public class CfgPassTests
         await Assert.ThrowsAnyAsync<Exception>(() =>
             PipelineFixtures.MakeCfgPass().ExecuteAsync(ctx));
     }
+
+    // ── Array program (BubbleSort) tests ─────────────────────────────────────
+
+    private static async Task<IronLlm.Passes.CompilationContext> BuildArrayContext()
+    {
+        var graph = PipelineFixtures.BuildBubbleSortGraph();
+        var ctx   = PipelineFixtures.MakeContext();
+        ctx.SemanticGraph = graph;
+        await PipelineFixtures.MakeCfgPass().ExecuteAsync(ctx);
+        return ctx;
+    }
+
+    private static readonly string[] ExpectedArrayLabels =
+    [
+        "entry", "outer_loop_test", "inner_loop_init", "inner_loop_test",
+        "compare", "swap", "inner_loop_inc", "outer_loop_inc",
+        "print_init", "print_loop_test", "print_element", "print_inc", "exit",
+    ];
+
+    [Fact]
+    public async Task Execute_ArrayProgram_ProducesExpectedBlocks()
+    {
+        var ctx    = await BuildArrayContext();
+        var labels = ctx.CfgBlocks.Select(b => b.Label).ToHashSet();
+        foreach (var expected in ExpectedArrayLabels)
+            Assert.Contains(expected, labels);
+    }
+
+    [Fact]
+    public async Task Execute_ArrayProgram_BlockCount_IsThirteen()
+    {
+        var ctx = await BuildArrayContext();
+        Assert.Equal(13, ctx.CfgBlocks.Count);
+    }
+
+    [Fact]
+    public async Task Execute_ArrayProgram_EntryBlockHasArrayInitInstructions()
+    {
+        var ctx   = await BuildArrayContext();
+        var entry = ctx.CfgBlocks.Single(b => b.Label == "entry");
+        // newarr + 10 element assignments + "i = 0"
+        Assert.True(entry.Instructions.Count >= 12);
+        Assert.Contains(entry.Instructions, i => i.StartsWith("newarr "));
+        Assert.Contains(entry.Instructions, i => i.Contains("[0] ="));
+        Assert.Contains(entry.Instructions, i => i == "i = 0");
+    }
+
+    [Fact]
+    public async Task Execute_ArrayProgram_ExitBlockHasNoSuccessors()
+    {
+        var ctx  = await BuildArrayContext();
+        var exit = ctx.CfgBlocks.Single(b => b.Label == "exit");
+        Assert.Null(exit.SuccessorTrue);
+        Assert.Null(exit.SuccessorFalse);
+    }
+
+    [Fact]
+    public async Task Execute_ArrayProgram_AllSuccessors_ReferenceExistingLabels()
+    {
+        var ctx    = await BuildArrayContext();
+        var labels = ctx.CfgBlocks.Select(b => b.Label).ToHashSet();
+        foreach (var block in ctx.CfgBlocks)
+        {
+            if (block.SuccessorTrue  != null) Assert.Contains(block.SuccessorTrue,  labels);
+            if (block.SuccessorFalse != null) Assert.Contains(block.SuccessorFalse, labels);
+        }
+    }
 }

@@ -52,11 +52,15 @@ Reuse `SemanticNormalizationPass.CosineSimilarity(float[], float[])` — already
 
 ## Storing API Knowledge
 
+> **DEFERRED — not implemented in Spec 03.**
+> 
+> Requires build-failure introspection: the recording policy depends on detecting that a compile failed with a missing-member or wrong-signature error and then succeeded after correction in the same session. That detection mechanism does not exist in the pipeline. This is a distinct design problem from graph storage and retrieval.
+> 
+> When this is revisited, write a separate spec. The `ApiKnowledgeRecord` shape below is preserved for reference.
+
 The repository should also persist integration knowledge discovered at runtime — not just compiled graphs. When the compiler successfully integrates with an external API, it can record what it learned: the correct call shape, the version it was tested against, and the contract it satisfies.
 
-During development of Spec 09 (CLI), the correct `System.CommandLine` 2.0 API was not known in advance — it required probing via reflection to discover that `Option<T>` takes `(string name, string[] aliases)` and that `SetAction` receives a `ParseResult`. If that learning were stored as a structured `ApiKnowledgeRecord`, a future session could retrieve it before generating code that calls the same package.
-
-### `ApiKnowledgeRecord` Shape
+### `ApiKnowledgeRecord` Shape (reference, not implemented)
 
 ```json
 {
@@ -71,7 +75,7 @@ During development of Spec 09 (CLI), the correct `System.CommandLine` 2.0 API wa
 
 The embedding is computed from `notes` so future queries retrieve it via cosine similarity even without the exact package name.
 
-### Recording Policy
+### Recording Policy (reference, not implemented)
 
 API knowledge is recorded whenever a build fails due to a missing member or wrong signature, and the correct shape is subsequently discovered and the build succeeds. The record is written automatically after a successful compile that followed at least one API-related build failure in the same session.
 

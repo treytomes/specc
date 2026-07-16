@@ -33,6 +33,8 @@ public class CompilationPipeline
             await ArtifactWriter.WritePassArtifactAsync(pass, context, _logger);
         }
 
+        await ManifestWriter.WriteAsync(context);
+
         _logger.LogInformation("Compilation complete");
 
         if (context.LauncherPath != null)

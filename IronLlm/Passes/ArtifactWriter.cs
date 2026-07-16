@@ -57,6 +57,12 @@ public static class ArtifactWriter
                 await WriteJson("05-stackir.json", ctx.StackIr, ctx, logger);
                 break;
 
+            case SemanticValidationPass:
+                // Artifact already written inside ExecuteAsync.
+                if (pass.ArtifactFile is { } valArt)
+                    logger.LogDebug("Artifact written: {Path}", Path.Combine(ctx.ArtifactsDir, valArt));
+                break;
+
             case MsilGenerationPass:
                 if (ctx.MsilOutput != null)
                 {
@@ -83,6 +89,14 @@ public static class ArtifactWriter
 
             case AcceptanceVerificationPass:
                 // Terminal pass — no artifact.
+                break;
+
+            case RepositoryRetrievalPass:
+                // No artifact — retrieval is always fresh.
+                break;
+
+            case RepositoryPersistPass:
+                // No artifact — persistence is fire-and-forget.
                 break;
         }
     }

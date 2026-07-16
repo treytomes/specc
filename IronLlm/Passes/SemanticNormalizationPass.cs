@@ -16,9 +16,15 @@ namespace IronLlm.Passes;
 [ExcludeFromCodeCoverage(Justification = "Requires live Ollama; covered by scripts/test.sh")]
 public class SemanticNormalizationPass : ICompilerPass
 {
+    // Rejection threshold: nodes below this score don't match any known type.
     // Empirically calibrated for mxbai-embed-large: well-formed nodes of the same type
     // score 0.68-0.78; unrelated concepts score below 0.50. 0.60 leaves a safe margin.
     private const float Threshold = 0.60f;
+
+    // Reclassification threshold: only reclassify a node to a different kind when the
+    // best-match score clears this bar. Same-type nodes score 0.68-0.78 so 0.80 requires
+    // a clear signal before changing the kind the graph builder already assigned.
+    private const float ReclassifyThreshold = 0.80f;
 
     // Short, type-focused descriptions without instance-specific values.
     // Avoiding proper nouns and concrete numbers keeps similarity high across all instances.
@@ -32,6 +38,10 @@ public class SemanticNormalizationPass : ICompilerPass
         ("Variable",   "An integer variable declaration."),
         ("Constant",   "An integer literal constant."),
         ("Comparison", "A comparison between two integer values."),
+        ("Array",      "An array of integer values with a fixed size."),
+        ("Index",      "Access to an array element by index position."),
+        ("Swap",       "Swap two elements in an array."),
+        ("NestedLoop", "An inner loop whose upper bound depends on an outer loop variable."),
     ];
 
     private readonly IEmbeddingGenerator<string, Embedding<float>> _embedder;
@@ -110,7 +120,7 @@ public class SemanticNormalizationPass : ICompilerPass
 
             var currentKind = KindOf(node);
 
-            if (currentKind != bestKind)
+            if (currentKind != bestKind && bestScore >= ReclassifyThreshold)
             {
                 _logger.LogWarning(
                     "Node '{Label}' reclassified from {From} to {To} (similarity {Score:F2})",
@@ -179,6 +189,10 @@ public class SemanticNormalizationPass : ICompilerPass
         VariableNode   => "Variable",
         ConstantNode   => "Constant",
         ComparisonNode => "Comparison",
+        ArrayNode      => "Array",
+        IndexNode      => "Index",
+        SwapNode       => "Swap",
+        NestedLoopNode => "NestedLoop",
         _              => "Unknown",
     };
 
@@ -186,14 +200,18 @@ public class SemanticNormalizationPass : ICompilerPass
     {
         return targetKind switch
         {
-            "Print"    => new PrintNode(node.Id, node.Label, ExtractTemplate(node.Label)),
-            "Loop"     => new LoopNode(node.Id, node.Label, 1, 100),
-            "Branch"   => new BranchNode(node.Id, node.Label, Slugify(node.Label)),
-            "Modulo"   => new ModuloNode(node.Id, node.Label, ExtractDivisor(node.Label)),
-            "Variable" => new VariableNode(node.Id, node.Label, ExtractIdentifier(node.Label), "int"),
-            "Constant" => new ConstantNode(node.Id, node.Label, ExtractNumber(node.Label)),
-            "Program"  => new ProgramNode(node.Id, node.Label, ExtractIdentifier(node.Label)),
+            "Print"      => new PrintNode(node.Id, node.Label, ExtractTemplate(node.Label)),
+            "Loop"       => new LoopNode(node.Id, node.Label, 1, 100),
+            "Branch"     => new BranchNode(node.Id, node.Label, Slugify(node.Label)),
+            "Modulo"     => new ModuloNode(node.Id, node.Label, ExtractDivisor(node.Label)),
+            "Variable"   => new VariableNode(node.Id, node.Label, ExtractIdentifier(node.Label), "int"),
+            "Constant"   => new ConstantNode(node.Id, node.Label, ExtractNumber(node.Label)),
+            "Program"    => new ProgramNode(node.Id, node.Label, ExtractIdentifier(node.Label)),
             "Comparison" => new ComparisonNode(node.Id, node.Label, "=="),
+            "Array"      => new ArrayNode(node.Id, node.Label, ExtractIdentifier(node.Label), "int", 10),
+            "Index"      => new IndexNode(node.Id, node.Label, ExtractArrayName(node.Label), "0"),
+            "Swap"       => new SwapNode(node.Id, node.Label, ExtractArrayName(node.Label), "j", "j+1"),
+            "NestedLoop" => new NestedLoopNode(node.Id, node.Label, ExtractIdentifier(node.Label), 0, "n-1"),
             _ => throw new CompilationException(
                 $"Cannot reclassify node '{node.Label}' to unknown kind '{targetKind}'"),
         };
@@ -201,15 +219,19 @@ public class SemanticNormalizationPass : ICompilerPass
 
     private static string NormalizeLabel(Node node) => node switch
     {
-        ProgramNode p    => $"Program:{p.Name}",
-        LoopNode l       => $"Loop:{l.From}..{l.To}",
-        BranchNode b     => $"Branch:{b.Condition}",
-        PrintNode pr     => $"Print:{pr.Template}",
-        ModuloNode m     => $"Modulo:{m.Divisor}",
-        VariableNode v   => $"Var:{v.Name}",
-        ConstantNode c   => $"Constant:{c.Value}",
-        ComparisonNode c => $"Comparison:{c.Op}",
-        _                => node.Label,
+        ProgramNode p     => $"Program:{p.Name}",
+        LoopNode l        => $"Loop:{l.From}..{l.To}",
+        BranchNode b      => $"Branch:{b.Condition}",
+        PrintNode pr      => $"Print:{pr.Template}",
+        ModuloNode m      => $"Modulo:{m.Divisor}",
+        VariableNode v    => $"Var:{v.Name}",
+        ConstantNode c    => $"Constant:{c.Value}",
+        ComparisonNode c  => $"Comparison:{c.Op}",
+        ArrayNode a       => $"Array:{a.Name}[{a.Size}]",
+        IndexNode ix      => $"Index:{ix.ArrayName}[{ix.IndexExpr}]",
+        SwapNode sw       => $"Swap:{sw.ArrayName}[{sw.FromExpr}↔{sw.ToExpr}]",
+        NestedLoopNode nl => $"NestedLoop:{nl.Variable}<{nl.BoundExpr}",
+        _                 => node.Label,
     };
 
     // Heuristic value extractors used by Reclassify when type information is lost.
@@ -238,6 +260,14 @@ public class SemanticNormalizationPass : ICompilerPass
     {
         var m = System.Text.RegularExpressions.Regex.Match(label, @"[A-Za-z_][A-Za-z0-9_]*");
         return m.Success ? m.Value : "unknown";
+    }
+
+    // Extracts the array name from labels like "swap(arr[j], arr[j+1])" or "arr[j]".
+    // Looks for an identifier immediately followed by '[', falling back to ExtractIdentifier.
+    private static string ExtractArrayName(string label)
+    {
+        var m = System.Text.RegularExpressions.Regex.Match(label, @"([A-Za-z_][A-Za-z0-9_]*)\s*\[");
+        return m.Success ? m.Groups[1].Value : ExtractIdentifier(label);
     }
 
     private static string Slugify(string label) =>

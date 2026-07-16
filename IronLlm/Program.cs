@@ -111,12 +111,15 @@ compileCommand.SetAction(async result =>
         .AddTransient<ICompilerPass, GraphVisualizationPass>()
         .AddTransient<ICompilerPass, AcceptanceCriteriaPass>()
         .AddTransient<ICompilerPass, EmbeddingPass>()
+        .AddTransient<ICompilerPass, RepositoryRetrievalPass>()
         .AddTransient<ICompilerPass, SemanticNormalizationPass>()
         .AddTransient<ICompilerPass, CfgPass>()
         .AddTransient<ICompilerPass, StackIrPass>()
+        .AddTransient<ICompilerPass, SemanticValidationPass>()
         .AddTransient<ICompilerPass, MsilGenerationPass>()
         .AddTransient<ICompilerPass, AssemblyEmitPass>()
         .AddTransient<ICompilerPass, AcceptanceVerificationPass>()
+        .AddTransient<ICompilerPass, RepositoryPersistPass>()
         .AddTransient<CompilationPipeline>();
 
     using var host = builder.Build();
@@ -125,8 +128,9 @@ compileCommand.SetAction(async result =>
 
     var context = new CompilationContext
     {
-        SpecPath     = specPath,
-        ArtifactsDir = artifactsDir,
+        SpecPath       = specPath,
+        ArtifactsDir   = artifactsDir,
+        RepositoryPath = Path.Combine(repoRoot, "repository"),
     };
 
     var pipeline = host.Services.GetRequiredService<CompilationPipeline>();

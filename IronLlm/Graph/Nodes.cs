@@ -12,6 +12,10 @@ namespace IronLlm.Graph;
 [JsonDerivedType(typeof(ComparisonNode), "Comparison")]
 [JsonDerivedType(typeof(VariableNode), "Variable")]
 [JsonDerivedType(typeof(AssertionNode), "Assertion")]
+[JsonDerivedType(typeof(ArrayNode),      "Array")]
+[JsonDerivedType(typeof(IndexNode),      "Index")]
+[JsonDerivedType(typeof(SwapNode),       "Swap")]
+[JsonDerivedType(typeof(NestedLoopNode), "NestedLoop")]
 public abstract record Node(Guid Id, string Label);
 
 public record ProgramNode(Guid Id, string Label, string Name) : Node(Id, Label);
@@ -23,3 +27,15 @@ public record ModuloNode(Guid Id, string Label, int Divisor) : Node(Id, Label);
 public record ComparisonNode(Guid Id, string Label, string Op) : Node(Id, Label);
 public record VariableNode(Guid Id, string Label, string Name, string Type) : Node(Id, Label);
 public record AssertionNode(Guid Id, string Label, int Iteration, string Expected) : Node(Id, Label);
+
+public record ArrayNode(Guid Id, string Label, string Name, string ElementType, int Size, int[]? Values = null)
+    : Node(Id, Label);
+
+public record IndexNode(Guid Id, string Label, string ArrayName, string IndexExpr)
+    : Node(Id, Label);
+
+public record SwapNode(Guid Id, string Label, string ArrayName, string FromExpr, string ToExpr)
+    : Node(Id, Label);
+
+public record NestedLoopNode(Guid Id, string Label, string Variable, int From, string BoundExpr)
+    : Node(Id, Label);
