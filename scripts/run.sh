@@ -9,7 +9,7 @@ if [[ "${1:-}" == --* ]]; then
         --project "$REPO_ROOT/IronLlm/IronLlm.csproj" \
         -- compile "$@"
 else
-    SPEC="${1:-$REPO_ROOT/examples/FizzBuzz/FizzBuzz.spec}"
+    SPEC="${1:-$REPO_ROOT/examples/FizzBuzz/FizzBuzz.md}"
     ARTIFACTS="${2:-$(dirname "$SPEC")/artifacts}"
 
     if [[ ! -f "$SPEC" ]]; then

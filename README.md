@@ -13,11 +13,13 @@ This is a testbed for the idea that the gap between "what a human wants" and "wh
 Seven passes, each writing a named artifact file to an output directory. The pipeline is **incremental**: if an artifact already exists, the pass is skipped and context is loaded from disk.
 
 ```
-FizzBuzz.spec
+FizzBuzz.md   (or FizzBuzz.spec)
     │
+    ▼ MarkdownSpecPass ──────── 00-extracted.spec     extracted spec (LLM, .md only)
     ▼ ParseSpecPass ─────────── 01-spec.json          raw spec text
     ▼ SemanticGraphPass ──────── 02-semantic-graph.json  typed node/edge graph
     ▼ EmbeddingPass ─────────── 03-embeddings.json     per-node vectors (LLM)
+    ▼ SemanticNormalizationPass  03b-normalized-graph.json  label normalization
     ▼ CfgPass ───────────────── 04-cfg.json            control-flow graph
     ▼ StackIrPass ───────────── 05-stackir.json        stack machine IR
     ▼ MsilGenerationPass ─────── 06-program.il         IL assembly text
@@ -25,7 +27,7 @@ FizzBuzz.spec
                        └──────── FizzBuzz              native launcher (executable)
 ```
 
-The LLM (mxbai-embed-large via Ollama) is used exactly once — the embedding pass — where it genuinely earns its place: understanding the semantic meaning of each graph node. Everything else is deterministic.
+The LLM is used in two places: extracting a `.spec` from a Markdown description (ministral-3b), and embedding each graph node as a semantic vector (mxbai-embed-large). Everything else is deterministic.
 
 ## Quickstart
 
@@ -90,7 +92,7 @@ IronLlm/
   Passes/         One file per pass + CompilationContext + ArtifactWriter
   Program.cs      Incremental pipeline runner
 examples/
-  FizzBuzz/       FizzBuzz.spec + artifacts/ (generated)
+  FizzBuzz/       FizzBuzz.md + artifacts/ (generated)
 scripts/
   install.sh      Dependency setup
   build.sh        dotnet build

@@ -113,5 +113,5 @@ The record is written automatically by the pipeline after a successful compile t
 
 - Should the repository store only successful compilations (i.e. those that pass all invariants), or all attempts? Suggested: successes only — the repository should be a library of known-good patterns.
 - Similarity threshold for surfacing a prior: start at 0.85, tune empirically.
-- What is a "subgraph" for retrieval purposes — individual nodes, or connected components? Start with individual nodes; connected components are a later optimisation.
+- What is a "subgraph" for retrieval purposes — individual nodes, or connected components? Start with individual nodes; connected components are a later optimization.
 - How should `ApiKnowledgeRecord`s be scoped — per-package, per-type, or per-method? Start per-package with free-form notes; structured per-method records are a later refinement.

@@ -14,7 +14,7 @@ IronLlm/
   Passes/         One file per compiler pass + CompilationContext + ArtifactWriter
   Program.cs      Incremental pipeline runner
 examples/
-  FizzBuzz/       FizzBuzz.spec + artifacts/ (generated, gitignored)
+  FizzBuzz/       FizzBuzz.md + artifacts/ (generated, gitignored)
 scripts/
   install.sh      Dependency check and setup
   build.sh        dotnet build wrapper
@@ -61,7 +61,7 @@ variable:
 
 ```bash
 scripts/install.sh          # verify/install dependencies
-scripts/run.sh              # compile examples/FizzBuzz/FizzBuzz.spec
+scripts/run.sh              # compile examples/FizzBuzz/FizzBuzz.md
 scripts/run.sh path/to/spec # compile a different spec
 scripts/test.sh             # build + full pipeline + output assertions
 ```

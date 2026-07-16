@@ -39,7 +39,24 @@
       "Bash(examples/FizzBuzz/artifacts/FizzBuzz)",
       "Bash(bash -n scripts/test.sh)",
       "Bash(git add *)",
-      "Bash(git commit -m ' *)"
+      "Bash(git commit -m ' *)",
+      "Bash(dotnet test *)",
+      "Bash(dotnet package *)",
+      "Bash(find /home/trey/.nuget/packages/system.commandline/2.0.10 -name \"*.dll\" | head -3)",
+      "Read(//home/trey/.nuget/packages/system.commandline/2.0.10/**)",
+      "Bash(bash -n scripts/run.sh)",
+      "Bash(bash -n scripts/install.sh)",
+      "Bash(git mv *)",
+      "Bash(dotnet restore *)",
+      "Bash(find /usr/lib/dotnet /usr/share/dotnet ~/.nuget -name \"Microsoft.Extensions.Logging.Testing*\" 2>/dev/null | head -10)",
+      "Bash(rm -rf /tmp/fb-test && dotnet run --project IronLlm compile --spec examples/FizzBuzz/FizzBuzz.spec --out /tmp/fb-test 2>&1)",
+      "Bash(/tmp/fb-test/FizzBuzz)",
+      "Bash(rm -rf /tmp/fb-md-test)",
+      "Bash(/tmp/fb-md-test/FizzBuzz)",
+      "Read(//tmp/fb-md-test/**)"
+    ],
+    "additionalDirectories": [
+      "/tmp/fb-test"
     ]
   }
 }

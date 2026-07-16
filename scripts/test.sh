@@ -5,7 +5,7 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 ARTIFACTS="$REPO_ROOT/examples/FizzBuzz/artifacts"
-SPEC="$REPO_ROOT/examples/FizzBuzz/FizzBuzz.spec"
+SPEC="$REPO_ROOT/examples/FizzBuzz/FizzBuzz.md"
 
 PASS=0
 FAIL=0
@@ -61,9 +61,11 @@ echo "Checking artifacts..."
 
 # ── Artifact existence + non-empty ───────────────────────────────────────────
 for artifact in \
+    "00-extracted.spec" \
     "01-spec.json" \
     "02-semantic-graph.json" \
     "03-embeddings.json" \
+    "03b-normalized-graph.json" \
     "04-cfg.json" \
     "05-stackir.json" \
     "06-program.il" \
