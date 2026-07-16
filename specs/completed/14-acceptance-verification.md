@@ -1,6 +1,6 @@
 # Spec 14 — Acceptance Verification
 
-**Status:** Ready to implement  
+**Status:** Complete  
 **Scope:** Two new passes (`AcceptanceCriteriaPass`, `AcceptanceVerificationPass`), one new graph type (`AssertionNode`), one `CompilationContext` field, one `CompilationException` subclass
 
 ## Problem
@@ -161,7 +161,7 @@ Add a case for `AcceptanceCriteriaPass` that serializes `context.Assertions` to 
 
 ## Relationship to `test.sh`
 
-Once `AcceptanceVerificationPass` is in place, the output-correctness checks in `test.sh` are redundant — the pipeline self-verifies. They should be replaced with a single check that the pipeline exit code is 0.
+`test.sh` is a compiler smoke test, not an output verifier. It checks that artifacts exist, are non-empty, and have expected structural properties (graph nodes, IL opcodes, executable bit). Output correctness is the pipeline's job: `AcceptanceVerificationPass` throws on failure, which propagates as a non-zero exit code that `set -euo pipefail` catches. The separate "Executable output" block that re-ran the binary and spot-checked stdout has been removed.
 
 ## Failure modes
 

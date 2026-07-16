@@ -117,27 +117,6 @@ if [[ -f "$launcher" ]]; then
     check "launcher is executable" "$( [[ -x "$launcher" ]] && echo ok || echo "not executable" )"
 fi
 
-# ── Executable output ────────────────────────────────────────────────────────
-# Prefer the native launcher; fall back to dotnet <dll> for CI environments without the apphost pack
-dll="$ARTIFACTS/07-program.dll"
-if [[ -x "$launcher" ]]; then
-    output=$("$launcher" 2>/dev/null || echo "")
-elif [[ -f "$dll" ]]; then
-    output=$(dotnet "$dll" 2>/dev/null || echo "")
-fi
-if [[ -n "${output+x}" ]]; then
-    check "executable runs"              "$( [[ -n "$output" ]] && echo ok || echo "no output" )"
-    check "output contains Fizz"         "$( echo "$output" | grep -q '^Fizz$'     && echo ok || echo "missing Fizz" )"
-    check "output contains Buzz"         "$( echo "$output" | grep -q '^Buzz$'     && echo ok || echo "missing Buzz" )"
-    check "output contains FizzBuzz"     "$( echo "$output" | grep -q '^FizzBuzz$' && echo ok || echo "missing FizzBuzz" )"
-    line_count=$(echo "$output" | wc -l)
-    check "output is 100 lines ($line_count)" "$( [[ $line_count -eq 100 ]] && echo ok || echo "expected 100, got $line_count" )"
-    first=$(echo "$output" | head -1)
-    last=$(echo "$output" | tail -1)
-    check "first line is 1 (got: $first)"    "$( [[ "$first" == "1" ]]    && echo ok || echo "wrong" )"
-    check "last line is Buzz (got: $last)"   "$( [[ "$last"  == "Buzz" ]] && echo ok || echo "wrong" )"
-fi
-
 # ── Summary ──────────────────────────────────────────────────────────────────
 echo
 echo "Results: $PASS passed, $FAIL failed"
