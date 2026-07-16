@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# Usage: ./iron-llm <example-folder> [extra dotnet run args...]
+#
+# Finds the .md or .spec file inside the given folder, compiles it,
+# and runs the resulting binary.
+#
+# Examples:
+#   ./iron-llm examples/CountDown
+#   ./iron-llm examples/FizzBuzz --verbose
+#   ./iron-llm examples/FizzBuzz --force 03-embeddings.json
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+if [[ $# -eq 0 ]]; then
+    echo "Usage: $0 <example-folder> [dotnet-run-args...]" >&2
+    echo "       $0 examples/CountDown" >&2
+    echo "       $0 examples/FizzBuzz --verbose" >&2
+    exit 1
+fi
+
+FOLDER="$1"; shift
+FOLDER="$(cd "$FOLDER" 2>/dev/null && pwd)" || {
+    echo "Error: folder not found: $1" >&2
+    exit 1
+}
+
+# Find the spec file: prefer .md, fall back to .spec
+SPEC="$(find "$FOLDER" -maxdepth 1 \( -name '*.md' -o -name '*.spec' \) | sort | head -1)"
+if [[ -z "$SPEC" ]]; then
+    echo "Error: no .md or .spec file found in $FOLDER" >&2
+    exit 1
+fi
+
+ARTIFACTS="$FOLDER/artifacts"
+
+dotnet run \
+    --project "$REPO_ROOT/IronLlm/IronLlm.csproj" \
+    -- compile --spec "$SPEC" --out "$ARTIFACTS" "$@"
+
+# Run the compiled binary if it exists
+PROGRAM_NAME="$(basename "$FOLDER")"
+LAUNCHER="$ARTIFACTS/$PROGRAM_NAME"
+
+if [[ -x "$LAUNCHER" ]]; then
+    echo
+    "$LAUNCHER"
+elif [[ -f "$ARTIFACTS/$PROGRAM_NAME.dll" ]]; then
+    echo
+    dotnet "$ARTIFACTS/$PROGRAM_NAME.dll"
+fi
