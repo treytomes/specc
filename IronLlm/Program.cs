@@ -108,6 +108,7 @@ compileCommand.SetAction(async result =>
     builder.Services
         .AddTransient<ICompilerPass, ParseSpecPass>()
         .AddTransient<ICompilerPass, SemanticGraphPass>()
+        .AddTransient<ICompilerPass, GraphVisualizationPass>()
         .AddTransient<ICompilerPass, AcceptanceCriteriaPass>()
         .AddTransient<ICompilerPass, EmbeddingPass>()
         .AddTransient<ICompilerPass, SemanticNormalizationPass>()

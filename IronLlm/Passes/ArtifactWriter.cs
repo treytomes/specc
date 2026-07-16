@@ -66,6 +66,12 @@ public static class ArtifactWriter
                 }
                 break;
 
+            case GraphVisualizationPass:
+                // Both .mmd and .svg written inside ExecuteAsync.
+                if (pass.ArtifactFile is { } vizArt)
+                    logger.LogDebug("Artifact written: {Path}", Path.Combine(ctx.ArtifactsDir, vizArt));
+                break;
+
             case AcceptanceCriteriaPass:
                 await WriteJson("00-acceptance.json", ctx.Assertions, ctx, logger);
                 break;
