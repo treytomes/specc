@@ -1,72 +1,57 @@
 # Spec 01 — Stack IR Lowering
 
 **Status:** Ready to implement  
-**Scope:** `StackIrPass.cs`, `CfgPass.cs` system prompt
+**Scope:** `StackIrPass.cs`
 
 ## Problem
 
-The CFG pass produces natural-language pseudo-instructions like:
+`CfgPass` is fully deterministic — it derives block labels and instruction strings directly from the semantic graph (no LLM). The block structure it emits is:
 
-```
-"init n = 1"
-"loop_start: check n <= 100"
-"increment n: n = n + 1"
-```
+- Entry block: initialize loop variable
+- Loop-test block: compare variable against upper bound, branch to exit or body
+- Body block: dispatch to modulo-check blocks
+- Per-condition blocks: `check_{condition}` and `print_{condition}`
+- Increment block: bump loop variable, jump back to loop-test
+- Exit block
 
-`StackIrPass` matches these with hand-written string patterns. The patterns miss the actual strings the LLM returns, so the entry, loop-test, and loop-increment blocks emit nothing — only the modulo-check blocks lower correctly. The generated MSIL is consequently incomplete.
-
-## Root Cause
-
-Two options exist; we should do both:
-
-**Option A — Tighten the CFG prompt.** Mandate exact instruction strings in the system prompt and validate them in `CfgPass.Validate`. The LLM becomes narrowly constrained; the StackIrPass patterns become reliable.
-
-**Option B — Strengthen StackIrPass patterns.** Match more loosely (contains `"n ="` and a digit, contains `"increment"`, contains `"check n"` and `"100"`). Less brittle if the LLM varies phrasing.
-
-Both should be done. Prompts drift; patterns should be tolerant.
+`StackIrPass` pattern-matches instruction strings to produce stack opcodes. Some of these patterns are incomplete or missing, so the loop-init, loop-test, and loop-increment blocks emit nothing — only the modulo-check and print blocks lower correctly. The generated MSIL is consequently incomplete.
 
 ## Instruction Contract
 
-Mandate these exact instruction strings in the CFG system prompt:
+`CfgPass` now emits these deterministic instruction strings:
 
 | Instruction string | Meaning |
 |--------------------|---------|
-| `n = 1` | initialize loop variable |
-| `if n > 100 goto exit` | loop termination test |
-| `if n % 15 == 0` | divisibility check |
-| `if n % 3 == 0` | divisibility check |
-| `if n % 5 == 0` | divisibility check |
-| `print "FizzBuzz"` | output string |
-| `print "Fizz"` | output string |
-| `print "Buzz"` | output string |
-| `print n` | output integer variable |
+| `n = {From}` | initialize loop variable (e.g. `n = 1`) |
+| `if n > {To} goto exit` | loop termination test |
+| `if n % {D} == 0` | divisibility check (one per modulo branch) |
+| `print "{X}"` | output string literal |
+| `print n` | output loop variable as integer |
 | `n = n + 1` | loop increment |
+
+The `{n}` placeholders are substituted with actual variable names and values from the graph.
 
 ## StackIrPass Changes
 
-Extend `LowerInstruction` to handle all ten patterns. Each must produce a correct sequence of stack ops:
+Extend `LowerInstruction` to handle all patterns. Each must produce a correct sequence of stack ops:
 
-- `n = 1` → `ldc.i4 1`, `stloc.0`
-- `if n > 100 goto exit` → `ldloc.0`, `ldc.i4 100`, `cgt`, (brfalse handled by block's SuccessorFalse)
-- `if n % D == 0` → `ldloc.0`, `ldc.i4 D`, `rem`, `ldc.i4 0`, `ceq`
-- `print "X"` → `ldstr "X"`, `call Console.WriteLine(string)`
-- `print n` → `ldloc.0`, `call Console.WriteLine(int32)`
-- `n = n + 1` → `ldloc.0`, `ldc.i4 1`, `add`, `stloc.0`
+| Pattern | Stack ops |
+|---------|-----------|
+| `n = {From}` | `ldc.i4 From`, `stloc.0` |
+| `if n > {To} goto exit` | `ldloc.0`, `ldc.i4 To`, `cgt`, `brfalse` (to next via block's SuccessorFalse) |
+| `if n % {D} == 0` | `ldloc.0`, `ldc.i4 D`, `rem`, `ldc.i4 0`, `ceq` |
+| `print "{X}"` | `ldstr "X"`, `call Console.WriteLine(string)` |
+| `print n` | `ldloc.0`, `call Console.WriteLine(int32)` |
+| `n = n + 1` | `ldloc.0`, `ldc.i4 1`, `add`, `stloc.0` |
 
 ## MsilGenerationPass Changes
 
-Add the missing `cgt` opcode to the switch:
+Add the missing `cgt` opcode to the switch and to the `OpCode` enum:
 
 ```csharp
-OpCode.Cgt => $"    cgt",
+OpCode.Cgt => "    cgt",
 ```
-
-Add `cgt` to the `OpCode` enum.
-
-## Invariant to Add to CfgPass.Validate
-
-After deserialization, assert that every non-exit block contains at least one instruction string that matches one of the ten known patterns. Reject with a descriptive error if not.
 
 ## Acceptance Criterion
 
-Running `dotnet run` produces a `06-program.il` file that, when assembled with `ilasm FizzBuzz.il` and run, prints the correct FizzBuzz sequence 1–100.
+Running `scripts/run.sh` produces a `06-program.il` that, when assembled with `scripts/assemble.sh` and run, prints the correct FizzBuzz sequence 1–100. The pipeline's own `AcceptanceVerificationPass` already validates the native binary output; `ilasm` round-trip is the additional goal.

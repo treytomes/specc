@@ -1,33 +1,40 @@
 # IronLlm
 
-A proof-of-concept spec compiler. You describe a program as a structured specification; IronLlm compiles it through a multi-pass pipeline into a native executable — with an LLM-powered semantic embedding layer at the heart of the intermediate representation.
+A compiler that treats programs as semantic objects rather than text. You describe a program in Markdown; IronLlm extracts a typed semantic graph, attaches learned embeddings to each node, verifies the program against its own acceptance criteria, and lowers the graph to a native executable.
 
 ## The idea
 
-Conventional compilers work on source text. IronLlm explores what happens when you treat program *intent* as the primary artifact: a typed semantic graph where every node carries a learned embedding that captures what it *means*, not just what it syntactically *is*. The compiler passes lower this graph — through CFG, stack IR, and MSIL — into a runnable binary, like a miniature LLVM.
+Most "AI + code" tools use the LLM as author or orchestrator. IronLlm is something different: the LLM is one optional pass in a deterministic pipeline, and what it contributes is *meaning as metadata* — per-node vector embeddings that make graph nodes semantically comparable. The graph is not a transient parse tree; it is the program. It persists, carries its acceptance criteria as first-class nodes, and the semantic normalization pass catches cases where a node's meaning drifts from its structural role.
 
-This is a testbed for the idea that the gap between "what a human wants" and "what a machine executes" can be bridged by a compiler that understands both layers.
+The deeper experiment: if programs are graphs with semantic embeddings, they become queryable and comparable across compilations. Two programs that implement the same intent should be close in embedding space. Graph structure could be refined by gradient (Spec 04). Prior compilations could inform future ones (Spec 03). This is the differentiable semantic graph — program structure as something that can be searched, interpolated, and refined, not just parsed and executed.
 
 ## Pipeline
 
-Seven passes, each writing a named artifact file to an output directory. The pipeline is **incremental**: if an artifact already exists, the pass is skipped and context is loaded from disk.
+Twelve passes, each writing a named artifact to an output directory. The pipeline is **incremental**: if an artifact already exists, the pass is skipped and context is loaded from disk.
 
 ```
-FizzBuzz.md   (or FizzBuzz.spec)
+FizzBuzz.md
     │
-    ▼ MarkdownSpecPass ──────── 00-extracted.spec     extracted spec (LLM, .md only)
-    ▼ ParseSpecPass ─────────── 01-spec.json          raw spec text
-    ▼ SemanticGraphPass ──────── 02-semantic-graph.json  typed node/edge graph
-    ▼ EmbeddingPass ─────────── 03-embeddings.json     per-node vectors (LLM)
-    ▼ SemanticNormalizationPass  03b-normalized-graph.json  label normalization
-    ▼ CfgPass ───────────────── 04-cfg.json            control-flow graph
-    ▼ StackIrPass ───────────── 05-stackir.json        stack machine IR
-    ▼ MsilGenerationPass ─────── 06-program.il         IL assembly text
-    ▼ AssemblyEmitPass ──────── 07-program.dll         managed PE
-                       └──────── FizzBuzz              native launcher (executable)
+    ▼ MarkdownSpecPass ──────────── 00-extracted.spec          LLM: extract spec from prose
+    │                  └─────────── 00-authorial-criteria.json LLM: extract acceptance rules from prose
+    ▼ ParseSpecPass ─────────────── 01-spec.json
+    ▼ SemanticGraphPass ─────────── 02-semantic-graph.json     typed node/edge graph
+    ▼ GraphVisualizationPass ─────── 02b-semantic-graph.mmd    Mermaid flowchart
+    │                        └────── 02c-semantic-graph.svg    layered SVG (browser-ready)
+    ▼ AcceptanceCriteriaPass ─────── 00-acceptance.json        expected output, derived from graph
+    ▼ EmbeddingPass ─────────────── 03-embeddings.json         per-node vectors (LLM)
+    ▼ SemanticNormalizationPass ──── 03b-normalized-graph.json label normalization via cosine similarity
+    ▼ CfgPass ───────────────────── 04-cfg.json                control-flow graph
+    ▼ StackIrPass ───────────────── 05-stackir.json            stack machine IR
+    ▼ MsilGenerationPass ────────── 06-program.il              IL assembly text
+    ▼ AssemblyEmitPass ──────────── 07-program.dll             managed PE
+    │                  └─────────── FizzBuzz                   native launcher
+    ▼ AcceptanceVerificationPass                               launch binary, diff against criteria
 ```
 
 The LLM is used in two places: extracting a `.spec` from a Markdown description (ministral-3b), and embedding each graph node as a semantic vector (mxbai-embed-large). Everything else is deterministic.
+
+`AcceptanceVerificationPass` prefers acceptance rules extracted from the Markdown prose over rules derived from the graph. Graph-derived rules verify internal consistency; prose-derived rules verify authorial intent — they can catch bugs introduced by the extraction passes themselves.
 
 ## Quickstart
 
@@ -42,14 +49,22 @@ The LLM is used in two places: extracting a `.spec` from a Markdown description 
 ./examples/FizzBuzz/artifacts/FizzBuzz
 ```
 
-Or run the full test suite:
+Full test suite:
+
 ```bash
 ./scripts/test.sh
 ```
 
+Force a pass to re-run by deleting its artifact or using `--force`:
+
+```bash
+# Re-run from the embedding pass onward
+./scripts/run.sh --force 03-embeddings.json
+```
+
 ## The spec format
 
-Programs are described in a simple key-value DSL:
+Programs are described in a simple key-value DSL, or in plain Markdown (preferred):
 
 ```
 program: FizzBuzz
@@ -90,58 +105,59 @@ Branches are evaluated in declaration order. The `default` branch has no `diviso
 IronLlm/
   Graph/          Node.cs, Edge.cs, CfgBlock.cs, StackInstruction.cs
   Passes/         One file per pass + CompilationContext + ArtifactWriter
-  Program.cs      Incremental pipeline runner
+  Program.cs      CLI entry point (System.CommandLine + DI + Serilog)
+IronLlm.Tests/
+  Passes/         Per-pass unit tests
+  Fixtures/       PipelineFixtures, FakeLogger
 examples/
   FizzBuzz/       FizzBuzz.md + artifacts/ (generated)
 scripts/
   install.sh      Dependency setup
   build.sh        dotnet build
   run.sh          Run the compiler
-  test.sh         End-to-end smoke test (21 checks)
+  test.sh         Build + unit tests + pipeline smoke test
   assemble.sh     Optional: re-assemble 06-program.il with ilasm
-specs/            Design specifications for upcoming passes
+specs/
+  completed/      Implemented design specs (08–14)
+  incomplete/     Upcoming work (01–06)
 ```
 
 ## Prerequisites
 
 | Dependency | Version | Purpose |
 |------------|---------|---------|
-| .NET SDK   | 10.0+   | Build and run |
-| Ollama     | latest  | LLM inference host |
+| .NET SDK | 10.0+ | Build and run |
+| Ollama | latest | LLM inference host |
 | mxbai-embed-large | latest | Embedding pass |
-| ministral-3:3b | latest | Reserved for future LLM passes |
+| ministral-3:3b | latest | Markdown spec ingestion |
 
-`scripts/install.sh` handles all of these. For Ollama's website, see the [Ollama docs](https://ollama.com).
+`scripts/install.sh` handles all of these. Override endpoints and model names via `.env` or environment variables (`IRONLLM_OLLAMA_BASE`, `IRONLLM_EMBED_MODEL`, `IRONLLM_CHAT_MODEL`).
 
 ## How the incremental pipeline works
 
-Each `ICompilerPass` declares an `ArtifactFile` (e.g. `"04-cfg.json"`). Before executing a pass, the runner checks if that file exists in the artifacts directory. If yes, it loads the pass's output from disk and moves on. This means:
+Each `ICompilerPass` declares an `ArtifactFile`. Before executing a pass, the runner checks if that file exists in the artifacts directory. If it does, the pass is skipped and context is loaded from disk. This means:
 
 - The expensive embedding pass (one Ollama call per graph node) only runs once per spec.
-- You can edit a downstream pass, delete its artifact, and re-run — only that pass and anything below it re-executes.
+- Editing a downstream pass, deleting its artifact, and re-running re-executes only from that point.
 - Deleting `04-cfg.json` through `07-program.dll` re-lowers the graph without re-embedding.
-
-## Roadmap
-
-The `specs/` directory contains detailed design documents for upcoming work:
-
-| Spec | Title | Status |
-|------|-------|--------|
-| 01 | StackIR pattern tightening | In progress |
-| 02 | SHA-256 artifact manifest | Ready |
-| 03 | Graph repository (persist + retrieve) | Design |
-| 04 | Differentiable node MLPs | Research |
-| 05 | BubbleSort — second example program | Ready |
-| 06 | Semantic validation pass | Ready |
-| 07 | Graph visualization (Mermaid + SVG) | Ready |
-| 08 | .env configuration | Ready |
-| 09 | System.CommandLine + DI + logging | Ready |
-| 10 | Markdown spec ingestion | Ready |
 
 ## Architecture notes
 
-**Why deterministic CFG?** An earlier version called a 3B LLM to generate the control-flow graph from the semantic graph. The problem: constructing correct CFG from a typed graph is a mechanical transformation, not a semantic understanding task. The 3B model couldn't follow structural constraints reliably. Rewriting `CfgPass` as deterministic code eliminated the entire class of errors immediately.
+**Why a deterministic CFG?** An earlier design called an LLM to generate the control-flow graph from the semantic graph. The problem: constructing correct CFG from a typed graph is a mechanical transformation, not a task that requires semantic understanding. Rewriting `CfgPass` as deterministic code eliminated an entire class of errors and made the pipeline testable without an Ollama instance.
 
-**Why apphost patching?** `AssemblyEmitPass` uses `PersistedAssemblyBuilder` (.NET 9+) to emit the managed PE entirely in-process, then copies the SDK's `apphost` binary and patches its filename placeholder to produce a directly-runnable native launcher — no `dotnet publish`, no `ilasm`, no shell-out.
+**Why authorial intent for verification?** Acceptance criteria derived from the graph verify that the binary matches the graph — but if `MarkdownSpecPass` or `SemanticGraphPass` misinterprets the prose, the graph and the criteria will both be wrong and the check will pass silently. Extracting criteria from the prose independently breaks this circular dependency.
 
-**Why a semantic graph at all?** It's the persistence layer for program intent. Once a program has been compiled and its graph + embeddings are saved, future compilations of *similar* programs can retrieve and reuse prior structural patterns (Spec 03). The embeddings also open the door to gradient-based refinement of the graph structure itself (Spec 04) — the experiment this whole project is pointing toward.
+**Why apphost patching?** `AssemblyEmitPass` uses `PersistedAssemblyBuilder` (.NET 9+) to emit the managed PE entirely in-process, then copies the SDK's `apphost` binary and patches its filename placeholder to produce a directly runnable native launcher — no `dotnet publish`, no `ilasm`, no shell-out.
+
+**Why a semantic graph at all?** It is the persistence layer for program intent. Once a program has been compiled and its graph and embeddings are saved, future compilations of similar programs can retrieve and reuse prior structural patterns (Spec 03). The embeddings open the door to gradient-based refinement of the graph structure itself (Spec 04) — the experiment the whole project is pointing toward.
+
+## Roadmap
+
+| Spec | Title | Status |
+|------|-------|--------|
+| 01 | StackIR lowering (ilasm round-trip) | Ready |
+| 02 | SHA-256 artifact manifest | Ready |
+| 03 | Graph repository (persist + retrieve) | Design |
+| 04 | Differentiable node MLPs | Research |
+| 05 | BubbleSort — second example program | Ready (after 01) |
+| 06 | Semantic validation pass | Ready |
