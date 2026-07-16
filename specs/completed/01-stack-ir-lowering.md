@@ -1,6 +1,6 @@
 # Spec 01 — Stack IR Lowering
 
-**Status:** Ready to implement  
+**Status:** Complete  
 **Scope:** `StackIrPass.cs`
 
 ## Problem

@@ -1,0 +1,239 @@
+using IronLlm.Graph;
+using IronLlm.Passes;
+using IronLlm.Tests.Fixtures;
+using Microsoft.Extensions.Logging.Abstractions;
+
+namespace IronLlm.Tests.Passes;
+
+/// <summary>
+/// Compiles each example program from its .spec text through the full deterministic pipeline
+/// (no Ollama) and verifies the binary output against expected lines.
+/// These tests exercise pipeline generalisation — different loop bounds, divisors, and
+/// branch counts — not just the FizzBuzz happy path.
+/// </summary>
+public class ExampleProgramTests : IDisposable
+{
+    private readonly string _artifactsDir;
+
+    public ExampleProgramTests()
+    {
+        _artifactsDir = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
+        Directory.CreateDirectory(_artifactsDir);
+    }
+
+    public void Dispose() => Directory.Delete(_artifactsDir, recursive: true);
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    private async Task<CompilationContext> CompileSpec(string specText)
+    {
+        var ctx = new CompilationContext
+        {
+            SpecPath     = "fake.spec",
+            ArtifactsDir = _artifactsDir,
+            RawSpec      = specText,
+        };
+
+        await PipelineFixtures.MakeSemanticGraphPass().ExecuteAsync(ctx);
+        await new AcceptanceCriteriaPass(NullLogger<AcceptanceCriteriaPass>.Instance).ExecuteAsync(ctx);
+        await PipelineFixtures.MakeCfgPass().ExecuteAsync(ctx);
+        await PipelineFixtures.MakeStackIrPass().ExecuteAsync(ctx);
+        await PipelineFixtures.MakeMsilGenerationPass().ExecuteAsync(ctx);
+        await new AssemblyEmitPass(NullLogger<AssemblyEmitPass>.Instance).ExecuteAsync(ctx);
+        return ctx;
+    }
+
+    private static async Task<string[]> RunAndGetLines(CompilationContext ctx)
+    {
+        var pass = new AcceptanceVerificationPass(NullLogger<AcceptanceVerificationPass>.Instance);
+        await pass.ExecuteAsync(ctx);   // throws on failure
+
+        var launcher = ctx.LauncherPath ?? ctx.AssemblyPath!;
+        var psi = new System.Diagnostics.ProcessStartInfo(launcher)
+        {
+            RedirectStandardOutput = true,
+            UseShellExecute        = false,
+        };
+        if (!System.IO.File.Exists(launcher) ||
+            (System.IO.File.GetUnixFileMode(launcher) & UnixFileMode.UserExecute) == 0)
+        {
+            psi = new System.Diagnostics.ProcessStartInfo("dotnet", launcher)
+            {
+                RedirectStandardOutput = true,
+                UseShellExecute        = false,
+            };
+        }
+        using var p = System.Diagnostics.Process.Start(psi)!;
+        var stdout = await p.StandardOutput.ReadToEndAsync();
+        await p.WaitForExitAsync();
+        return stdout.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+                     .Select(l => l.TrimEnd('\r')).ToArray();
+    }
+
+    // ── Fizz (single branch, 30 iterations) ──────────────────────────────────
+
+    private const string FizzSpec = """
+        program: Fizz
+
+        loop:
+          from: 1
+          to: 30
+
+        branch:
+          condition: divisible_by_3
+          divisor: 3
+          true_output: "Fizz"
+
+        branch:
+          condition: default
+          true_output: "{n}"
+
+        variable:
+          name: n
+          type: int
+        """;
+
+    [Fact]
+    public async Task Fizz_Produces30Lines()
+    {
+        var ctx = await CompileSpec(FizzSpec);
+        var lines = await RunAndGetLines(ctx);
+        Assert.Equal(30, lines.Length);
+    }
+
+    [Fact]
+    public async Task Fizz_MultiplesOf3_PrintFizz()
+    {
+        var ctx = await CompileSpec(FizzSpec);
+        var lines = await RunAndGetLines(ctx);
+        Assert.Equal("Fizz", lines[2]);   // iteration 3
+        Assert.Equal("Fizz", lines[5]);   // iteration 6
+        Assert.Equal("Fizz", lines[29]);  // iteration 30
+    }
+
+    [Fact]
+    public async Task Fizz_NonMultiples_PrintNumber()
+    {
+        var ctx = await CompileSpec(FizzSpec);
+        var lines = await RunAndGetLines(ctx);
+        Assert.Equal("1",  lines[0]);
+        Assert.Equal("2",  lines[1]);
+        Assert.Equal("4",  lines[3]);
+    }
+
+    [Fact]
+    public async Task Fizz_AcceptanceCriteria_Passes()
+    {
+        var ctx = await CompileSpec(FizzSpec);
+        Assert.Equal(30, ctx.Assertions.Count);
+    }
+
+    // ── CountDown (no branches, 1–10) ─────────────────────────────────────────
+
+    private const string CountDownSpec = """
+        program: CountDown
+
+        loop:
+          from: 1
+          to: 10
+
+        branch:
+          condition: default
+          true_output: "{n}"
+
+        variable:
+          name: n
+          type: int
+        """;
+
+    [Fact]
+    public async Task CountDown_Produces10Lines()
+    {
+        var ctx = await CompileSpec(CountDownSpec);
+        var lines = await RunAndGetLines(ctx);
+        Assert.Equal(10, lines.Length);
+    }
+
+    [Fact]
+    public async Task CountDown_PrintsNumbersInOrder()
+    {
+        var ctx = await CompileSpec(CountDownSpec);
+        var lines = await RunAndGetLines(ctx);
+        for (var i = 0; i < 10; i++)
+            Assert.Equal((i + 1).ToString(), lines[i]);
+    }
+
+    // ── FizzBuzzHundred (two-divisor variant: 7 and 11) ───────────────────────
+
+    private const string FizzBuzzHundredSpec = """
+        program: FizzBuzzHundred
+
+        loop:
+          from: 1
+          to: 100
+
+        branch:
+          condition: divisible_by_77
+          divisor: 77
+          true_output: "FizzBuzz"
+
+        branch:
+          condition: divisible_by_7
+          divisor: 7
+          true_output: "Fizz"
+
+        branch:
+          condition: divisible_by_11
+          divisor: 11
+          true_output: "Buzz"
+
+        branch:
+          condition: default
+          true_output: "{n}"
+
+        variable:
+          name: n
+          type: int
+        """;
+
+    [Fact]
+    public async Task FizzBuzzHundred_Produces100Lines()
+    {
+        var ctx = await CompileSpec(FizzBuzzHundredSpec);
+        var lines = await RunAndGetLines(ctx);
+        Assert.Equal(100, lines.Length);
+    }
+
+    [Fact]
+    public async Task FizzBuzzHundred_77_PrintsFizzBuzz()
+    {
+        var ctx = await CompileSpec(FizzBuzzHundredSpec);
+        var lines = await RunAndGetLines(ctx);
+        Assert.Equal("FizzBuzz", lines[76]);  // iteration 77
+    }
+
+    [Fact]
+    public async Task FizzBuzzHundred_7_PrintsFizz()
+    {
+        var ctx = await CompileSpec(FizzBuzzHundredSpec);
+        var lines = await RunAndGetLines(ctx);
+        Assert.Equal("Fizz", lines[6]);   // iteration 7
+        Assert.Equal("Fizz", lines[13]);  // iteration 14
+    }
+
+    [Fact]
+    public async Task FizzBuzzHundred_11_PrintsBuzz()
+    {
+        var ctx = await CompileSpec(FizzBuzzHundredSpec);
+        var lines = await RunAndGetLines(ctx);
+        Assert.Equal("Buzz", lines[10]);  // iteration 11
+        Assert.Equal("Buzz", lines[21]);  // iteration 22
+    }
+
+    [Fact]
+    public async Task FizzBuzzHundred_AcceptanceCriteria_Passes()
+    {
+        var ctx = await CompileSpec(FizzBuzzHundredSpec);
+        Assert.Equal(100, ctx.Assertions.Count);
+    }
+}
