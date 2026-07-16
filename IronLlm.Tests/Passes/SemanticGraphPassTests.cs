@@ -1,5 +1,4 @@
 using IronLlm.Graph;
-using IronLlm.Passes;
 using IronLlm.Tests.Fixtures;
 
 namespace IronLlm.Tests.Passes;
@@ -128,6 +127,33 @@ public class SemanticGraphPassTests
     public async Task Execute_Throws_WhenRawSpecNotSet()
     {
         var ctx = PipelineFixtures.MakeContext();
-        await Assert.ThrowsAnyAsync<Exception>(() => new SemanticGraphPass().ExecuteAsync(ctx));
+        await Assert.ThrowsAnyAsync<Exception>(() =>
+            PipelineFixtures.MakeSemanticGraphPass().ExecuteAsync(ctx));
+    }
+
+    [Fact]
+    public async Task Execute_EmitsWarning_WhenNoLoopSection()
+    {
+        var logger = new IronLlm.Tests.Fixtures.FakeLogger<IronLlm.Passes.SemanticGraphPass>();
+        var pass   = new IronLlm.Passes.SemanticGraphPass(logger);
+        var ctx    = PipelineFixtures.MakeContext();
+        ctx.RawSpec = "program: NoLoop\nbranch:\n  condition: c\n  true_output: \"x\"\nvariable:\n  name: n\n  type: int";
+        await pass.ExecuteAsync(ctx);
+        Assert.Contains(logger.Records,
+            r => r.Level == Microsoft.Extensions.Logging.LogLevel.Warning &&
+                 r.Message.Contains("loop"));
+    }
+
+    [Fact]
+    public async Task Execute_EmitsWarning_WhenNoVariableSection()
+    {
+        var logger = new IronLlm.Tests.Fixtures.FakeLogger<IronLlm.Passes.SemanticGraphPass>();
+        var pass   = new IronLlm.Passes.SemanticGraphPass(logger);
+        var ctx    = PipelineFixtures.MakeContext();
+        ctx.RawSpec = "program: NoVar\nloop:\n  from: 1\n  to: 10\nbranch:\n  condition: c\n  true_output: \"x\"";
+        await pass.ExecuteAsync(ctx);
+        Assert.Contains(logger.Records,
+            r => r.Level == Microsoft.Extensions.Logging.LogLevel.Warning &&
+                 r.Message.Contains("variable"));
     }
 }

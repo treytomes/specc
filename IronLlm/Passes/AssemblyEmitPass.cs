@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using System.Reflection.Emit;
@@ -6,6 +7,7 @@ using System.Reflection.Metadata.Ecma335;
 using System.Reflection.PortableExecutable;
 using System.Runtime.InteropServices;
 using IronLlm.Graph;
+using Microsoft.Extensions.Logging;
 using IrOp = IronLlm.Graph.OpCode;   // alias to avoid clash with System.Reflection.Emit.OpCode
 
 namespace IronLlm.Passes;
@@ -19,6 +21,13 @@ namespace IronLlm.Passes;
 [ExcludeFromCodeCoverage(Justification = "PE emit + apphost filesystem I/O; covered by scripts/test.sh")]
 public class AssemblyEmitPass : ICompilerPass
 {
+    private readonly ILogger<AssemblyEmitPass> _logger;
+
+    public AssemblyEmitPass(ILogger<AssemblyEmitPass> logger)
+    {
+        _logger = logger;
+    }
+
     public string Name          => "07-Assembly";
     public string? ArtifactFile  => "07-program.dll";
 
@@ -27,6 +36,7 @@ public class AssemblyEmitPass : ICompilerPass
         if (context.StackIr.Count == 0)
             throw new InvalidOperationException("StackIr not set");
 
+        var sw = Stopwatch.StartNew();
         var programName = context.SemanticGraph?.Nodes
             .OfType<ProgramNode>().FirstOrDefault()?.Name ?? "Program";
 
@@ -152,6 +162,10 @@ public class AssemblyEmitPass : ICompilerPass
 
         context.AssemblyPath  = outPath;
         context.LauncherPath  = launcherPath;
+
+        _logger.LogDebug("PE blob: {Bytes} bytes, runtimeconfig: {Config}", peBlob.Count, configPath);
+        _logger.LogInformation("Apphost: {Path}", launcherPath);
+        _logger.LogInformation("Pass {Name} completed in {ElapsedMs}ms", Name, sw.ElapsedMilliseconds);
     }
 
     // Patches the .NET apphost stub with the managed dll filename and writes

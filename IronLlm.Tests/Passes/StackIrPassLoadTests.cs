@@ -1,5 +1,4 @@
 using IronLlm.Graph;
-using IronLlm.Passes;
 using IronLlm.Tests.Fixtures;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -20,7 +19,7 @@ public class StackIrPassLoadTests
         {
             await File.WriteAllTextAsync(tmp, json);
             var loaded = PipelineFixtures.MakeContext();
-            await new StackIrPass().LoadFromArtifactAsync(tmp, loaded);
+            await PipelineFixtures.MakeStackIrPass().LoadFromArtifactAsync(tmp, loaded);
             Assert.Equal(ctx.StackIr.Count, loaded.StackIr.Count);
             Assert.Contains(loaded.StackIr, i => i.Op == OpCode.Ret);
         }

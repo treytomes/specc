@@ -1,14 +1,19 @@
+using System.Diagnostics;
 using System.Text.Json;
 using IronLlm.Graph;
+using Microsoft.Extensions.Logging;
 
 namespace IronLlm.Passes;
 
-// Deterministic CFG builder — derives control flow from the semantic graph.
-// The LLM was originally prototyped here, but proved too small for reliable
-// structured JSON emission. CFG construction from a typed semantic graph is
-// mechanical lowering; it belongs in code, not in a prompt.
 public class CfgPass : ICompilerPass
 {
+    private readonly ILogger<CfgPass> _logger;
+
+    public CfgPass(ILogger<CfgPass> logger)
+    {
+        _logger = logger;
+    }
+
     public string Name          => "04-CFG";
     public string? ArtifactFile  => "04-cfg.json";
 
@@ -29,6 +34,7 @@ public class CfgPass : ICompilerPass
 
     public Task ExecuteAsync(CompilationContext context)
     {
+        var sw    = Stopwatch.StartNew();
         var graph = context.SemanticGraph ?? throw new InvalidOperationException("SemanticGraph not set");
 
         var loop     = graph.Nodes.OfType<LoopNode>().FirstOrDefault()
@@ -37,7 +43,8 @@ public class CfgPass : ICompilerPass
         var variable = graph.Nodes.OfType<VariableNode>().FirstOrDefault();
         var varName  = variable?.Name ?? "n";
 
-        // Collect divisor-keyed branches in priority order (15, 3, 5, default).
+        // Derive modulo branches from graph edges — order by divisor descending so
+        // the most-specific check (highest divisor = most constrained) runs first.
         var modBranches = graph.Edges
             .Where(e => e.Type == EdgeType.DependsOn)
             .Select(e => new
@@ -45,69 +52,66 @@ public class CfgPass : ICompilerPass
                 Branch  = graph.Nodes.OfType<BranchNode>().First(n => n.Id == e.From),
                 Divisor = graph.Nodes.OfType<ModuloNode>().First(n => n.Id == e.To).Divisor,
             })
-            .OrderByDescending(x => x.Divisor)   // 15 before 3 and 5
-            .ThenByDescending(x => x.Divisor)
+            .OrderByDescending(x => x.Divisor)
             .ToList();
 
-        // Build print label map: condition → print block label.
-        var printLabels = new Dictionary<string, string>
-        {
-            ["divisible_by_15"] = "print_fizzbuzz",
-            ["divisible_by_3"]  = "print_fizz",
-            ["divisible_by_5"]  = "print_buzz",
-            ["default"]         = "print_n",
-        };
+        // Default branch: the one with no DependsOn edge (no divisor).
+        var modBranchIds = modBranches.Select(mb => mb.Branch.Id).ToHashSet();
+        var defaultBranch = branches.FirstOrDefault(b => !modBranchIds.Contains(b.Id));
 
-        // Resolve the output string for each branch condition.
-        string PrintFor(string condition)
+        string PrintFor(BranchNode branch)
         {
-            var branch = branches.FirstOrDefault(b => b.Condition == condition);
-            if (branch == null) return condition;
             var printEdge = graph.Edges.FirstOrDefault(e => e.From == branch.Id && e.Type == EdgeType.TrueBranch);
-            if (printEdge == null) return condition;
+            if (printEdge == null) return branch.Condition;
             var print = graph.Nodes.OfType<PrintNode>().FirstOrDefault(n => n.Id == printEdge.To);
-            return print?.Template ?? condition;
+            return print?.Template ?? branch.Condition;
         }
 
-        // Check order: 15, 3, 5
-        var checks = new (int Divisor, string Condition, string CheckLabel, string PrintLabel, string Next)[]
-        {
-            (15, "divisible_by_15", "fizzbuzz_check", "print_fizzbuzz", "fizz_check"),
-            ( 3, "divisible_by_3",  "fizz_check",     "print_fizz",     "buzz_check"),
-            ( 5, "divisible_by_5",  "buzz_check",     "print_buzz",     "print_n"),
-        };
+        // Build check labels from actual branch data; use slugified condition as label base.
+        static string CheckLabel(string condition) => $"check_{condition}";
+        static string PrintLabel(string condition) => $"print_{condition}";
+
+        // Determine the ordered check chain: first modulo check's label (or print_n if none).
+        var firstCheckLabel = modBranches.Count > 0
+            ? CheckLabel(modBranches[0].Branch.Condition)
+            : "print_n";
 
         var blocks = new List<CfgBlock>
         {
-            new("entry",
-                [$"{varName} = {loop.From}"],
-                "loop_test", null),
-
-            new("loop_test",
-                [$"if {varName} > {loop.To} goto exit"],
-                "fizzbuzz_check", "exit"),
+            new("entry",     [$"{varName} = {loop.From}"],            "loop_test",     null),
+            new("loop_test", [$"if {varName} > {loop.To} goto exit"], firstCheckLabel, "exit"),
         };
 
-        foreach (var (divisor, _, checkLabel, printLabel, nextCheck) in checks)
+        for (var i = 0; i < modBranches.Count; i++)
         {
-            blocks.Add(new(checkLabel,
-                [$"if {varName} % {divisor} == 0"],
-                printLabel, nextCheck));
+            var mb       = modBranches[i];
+            var cond     = mb.Branch.Condition;
+            var nextLabel = i + 1 < modBranches.Count
+                ? CheckLabel(modBranches[i + 1].Branch.Condition)
+                : "print_n";
+            blocks.Add(new(CheckLabel(cond), [$"if {varName} % {mb.Divisor} == 0"], PrintLabel(cond), nextLabel));
         }
 
-        // Print blocks
-        blocks.Add(new("print_fizzbuzz", [$"print \"{PrintFor("divisible_by_15")}\""], "loop_inc", null));
-        blocks.Add(new("print_fizz",     [$"print \"{PrintFor("divisible_by_3")}\""],  "loop_inc", null));
-        blocks.Add(new("print_buzz",     [$"print \"{PrintFor("divisible_by_5")}\""],  "loop_inc", null));
-        blocks.Add(new("print_n",        [$"print {varName}"],                          "loop_inc", null));
+        foreach (var mb in modBranches)
+            blocks.Add(new(PrintLabel(mb.Branch.Condition), [$"print \"{PrintFor(mb.Branch)}\""], "loop_inc", null));
 
-        blocks.Add(new("loop_inc",
-            [$"{varName} = {varName} + 1"],
-            "loop_test", null));
+        if (defaultBranch != null)
+            blocks.Add(new("print_n", [$"print {varName}"], "loop_inc", null));
+        else
+            blocks.Add(new("print_n", [$"print {varName}"], "loop_inc", null));
 
-        blocks.Add(new("exit", [], null, null));
+        blocks.Add(new("loop_inc", [$"{varName} = {varName} + 1"], "loop_test", null));
+        blocks.Add(new("exit",     [],                               null,        null));
 
         Validate(blocks);
+
+        foreach (var block in blocks)
+            _logger.LogDebug("Block {Label}: successors=[{True},{False}]",
+                block.Label, block.SuccessorTrue ?? "—", block.SuccessorFalse ?? "—");
+
+        _logger.LogInformation("Pass {Name} completed in {ElapsedMs}ms — {Count} blocks",
+            Name, sw.ElapsedMilliseconds, blocks.Count);
+
         context.CfgBlocks = blocks;
         return Task.CompletedTask;
     }

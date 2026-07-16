@@ -1,14 +1,13 @@
-using IronLlm.Passes;
 using IronLlm.Tests.Fixtures;
 
 namespace IronLlm.Tests.Passes;
 
 public class MsilGenerationPassTests
 {
-    private static async Task<CompilationContext> BuildContextAsync()
+    private static async Task<IronLlm.Passes.CompilationContext> BuildContextAsync()
     {
         var ctx = PipelineFixtures.AfterStackIr();
-        await new MsilGenerationPass().ExecuteAsync(ctx);
+        await PipelineFixtures.MakeMsilGenerationPass().ExecuteAsync(ctx);
         return ctx;
     }
 
@@ -62,7 +61,7 @@ public class MsilGenerationPassTests
         var labels = cfgCtx.CfgBlocks.Select(b => b.Label).ToList();
 
         var stackCtx = PipelineFixtures.AfterStackIr();
-        await new MsilGenerationPass().ExecuteAsync(stackCtx);
+        await PipelineFixtures.MakeMsilGenerationPass().ExecuteAsync(stackCtx);
         var il = stackCtx.MsilOutput!;
 
         foreach (var label in labels)
@@ -87,7 +86,8 @@ public class MsilGenerationPassTests
     public async Task Execute_Throws_WhenStackIrEmpty()
     {
         var ctx = PipelineFixtures.MakeContext();
-        await Assert.ThrowsAnyAsync<Exception>(() => new MsilGenerationPass().ExecuteAsync(ctx));
+        await Assert.ThrowsAnyAsync<Exception>(() =>
+            PipelineFixtures.MakeMsilGenerationPass().ExecuteAsync(ctx));
     }
 
     [Fact]
@@ -98,7 +98,7 @@ public class MsilGenerationPassTests
         {
             await File.WriteAllTextAsync(tmp, ".assembly Test {}");
             var ctx = PipelineFixtures.MakeContext();
-            await new MsilGenerationPass().LoadFromArtifactAsync(tmp, ctx);
+            await PipelineFixtures.MakeMsilGenerationPass().LoadFromArtifactAsync(tmp, ctx);
             Assert.Equal(".assembly Test {}", ctx.MsilOutput);
         }
         finally { File.Delete(tmp); }

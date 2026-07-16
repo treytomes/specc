@@ -21,6 +21,12 @@ public static class ArtifactWriter
 
         switch (pass)
         {
+            case MarkdownSpecPass:
+                // Artifact already written inside ExecuteAsync (plain text, not JSON).
+                if (pass.ArtifactFile is { } mdArt)
+                    logger.LogDebug("Artifact written: {Path}", Path.Combine(ctx.ArtifactsDir, mdArt));
+                break;
+
             case ParseSpecPass:
                 await WriteJson("01-spec.json", new { raw = ctx.RawSpec }, ctx, logger);
                 break;

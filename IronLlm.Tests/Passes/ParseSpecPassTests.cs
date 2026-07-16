@@ -1,4 +1,3 @@
-using IronLlm.Passes;
 using IronLlm.Tests.Fixtures;
 
 namespace IronLlm.Tests.Passes;
@@ -13,7 +12,7 @@ public class ParseSpecPassTests
         {
             await File.WriteAllTextAsync(spec, PipelineFixtures.FizzBuzzSpecText);
             var ctx = PipelineFixtures.MakeContext(spec);
-            await new ParseSpecPass().ExecuteAsync(ctx);
+            await PipelineFixtures.MakeParseSpecPass().ExecuteAsync(ctx);
             Assert.NotNull(ctx.RawSpec);
             Assert.NotEmpty(ctx.RawSpec);
         }
@@ -28,7 +27,7 @@ public class ParseSpecPassTests
         {
             await File.WriteAllTextAsync(spec, PipelineFixtures.FizzBuzzSpecText);
             var ctx = PipelineFixtures.MakeContext(spec);
-            await new ParseSpecPass().ExecuteAsync(ctx);
+            await PipelineFixtures.MakeParseSpecPass().ExecuteAsync(ctx);
             Assert.Contains("FizzBuzz", ctx.RawSpec);
         }
         finally { File.Delete(spec); }
@@ -43,7 +42,7 @@ public class ParseSpecPassTests
             var json = """{"raw":"program: Hello"}""";
             await File.WriteAllTextAsync(artifact, json);
             var ctx = PipelineFixtures.MakeContext();
-            await new ParseSpecPass().LoadFromArtifactAsync(artifact, ctx);
+            await PipelineFixtures.MakeParseSpecPass().LoadFromArtifactAsync(artifact, ctx);
             Assert.Equal("program: Hello", ctx.RawSpec);
         }
         finally { File.Delete(artifact); }
@@ -53,6 +52,6 @@ public class ParseSpecPassTests
     public async Task Execute_Throws_WhenFileDoesNotExist()
     {
         var ctx = PipelineFixtures.MakeContext("/does/not/exist.spec");
-        await Assert.ThrowsAnyAsync<Exception>(() => new ParseSpecPass().ExecuteAsync(ctx));
+        await Assert.ThrowsAnyAsync<Exception>(() => PipelineFixtures.MakeParseSpecPass().ExecuteAsync(ctx));
     }
 }

@@ -1,5 +1,4 @@
 using IronLlm.Graph;
-using IronLlm.Passes;
 using IronLlm.Tests.Fixtures;
 
 namespace IronLlm.Tests.Passes;
@@ -50,7 +49,7 @@ public class StackIrPassTests
     {
         var ctx    = PipelineFixtures.AfterCfg();
         var labels = ctx.CfgBlocks.Select(b => b.Label).ToHashSet();
-        await new StackIrPass().ExecuteAsync(ctx);
+        await PipelineFixtures.MakeStackIrPass().ExecuteAsync(ctx);
         var irLabels = ctx.StackIr
             .Where(i => i.Op == OpCode.Label)
             .Select(i => i.Operand!)
@@ -114,6 +113,24 @@ public class StackIrPassTests
     public void Execute_Throws_WhenCfgBlocksEmpty()
     {
         var ctx = PipelineFixtures.MakeContext();
-        Assert.ThrowsAny<Exception>(() => new StackIrPass().ExecuteAsync(ctx).GetAwaiter().GetResult());
+        Assert.ThrowsAny<Exception>(() =>
+            PipelineFixtures.MakeStackIrPass().ExecuteAsync(ctx).GetAwaiter().GetResult());
+    }
+
+    [Fact]
+    public async Task Execute_EmitsWarning_ForUnrecognisedInstruction()
+    {
+        var logger = new IronLlm.Tests.Fixtures.FakeLogger<IronLlm.Passes.StackIrPass>();
+        var pass   = new IronLlm.Passes.StackIrPass(logger);
+        var ctx    = PipelineFixtures.AfterCfg();
+
+        // Inject an unrecognisable instruction into the first block.
+        ctx.CfgBlocks[0].Instructions.Add("XYZZY do something unknown");
+
+        await pass.ExecuteAsync(ctx);
+
+        Assert.Contains(logger.Records,
+            r => r.Level == Microsoft.Extensions.Logging.LogLevel.Warning &&
+                 r.Message.Contains("unrecognised"));
     }
 }

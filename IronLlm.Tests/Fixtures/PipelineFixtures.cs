@@ -1,5 +1,6 @@
 using IronLlm.Graph;
 using IronLlm.Passes;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace IronLlm.Tests.Fixtures;
 
@@ -47,6 +48,21 @@ internal static class PipelineFixtures
         ArtifactsDir = Path.GetTempPath(),
     };
 
+    public static ParseSpecPass MakeParseSpecPass()
+        => new(NullLogger<ParseSpecPass>.Instance);
+
+    public static SemanticGraphPass MakeSemanticGraphPass()
+        => new(NullLogger<SemanticGraphPass>.Instance);
+
+    public static CfgPass MakeCfgPass()
+        => new(NullLogger<CfgPass>.Instance);
+
+    public static StackIrPass MakeStackIrPass()
+        => new(NullLogger<StackIrPass>.Instance);
+
+    public static MsilGenerationPass MakeMsilGenerationPass()
+        => new(NullLogger<MsilGenerationPass>.Instance);
+
     public static CompilationContext AfterParse()
     {
         var ctx = MakeContext();
@@ -57,21 +73,21 @@ internal static class PipelineFixtures
     public static CompilationContext AfterGraph()
     {
         var ctx = AfterParse();
-        new SemanticGraphPass().ExecuteAsync(ctx).GetAwaiter().GetResult();
+        MakeSemanticGraphPass().ExecuteAsync(ctx).GetAwaiter().GetResult();
         return ctx;
     }
 
     public static CompilationContext AfterCfg()
     {
         var ctx = AfterGraph();
-        new CfgPass().ExecuteAsync(ctx).GetAwaiter().GetResult();
+        MakeCfgPass().ExecuteAsync(ctx).GetAwaiter().GetResult();
         return ctx;
     }
 
     public static CompilationContext AfterStackIr()
     {
         var ctx = AfterCfg();
-        new StackIrPass().ExecuteAsync(ctx).GetAwaiter().GetResult();
+        MakeStackIrPass().ExecuteAsync(ctx).GetAwaiter().GetResult();
         return ctx;
     }
 }

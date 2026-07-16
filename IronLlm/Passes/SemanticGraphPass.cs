@@ -1,12 +1,19 @@
+using System.Diagnostics;
 using System.Text.Json;
 using IronLlm.Graph;
+using Microsoft.Extensions.Logging;
 
 namespace IronLlm.Passes;
 
-// Deterministic parser: reads the .spec file and builds the semantic graph.
-// No LLM involved — this is pure structural extraction.
 public class SemanticGraphPass : ICompilerPass
 {
+    private readonly ILogger<SemanticGraphPass> _logger;
+
+    public SemanticGraphPass(ILogger<SemanticGraphPass> logger)
+    {
+        _logger = logger;
+    }
+
     public string Name          => "02-SemanticGraph";
     public string? ArtifactFile  => "02-semantic-graph.json";
 
@@ -31,17 +38,15 @@ public class SemanticGraphPass : ICompilerPass
 
     public Task ExecuteAsync(CompilationContext context)
     {
+        var sw   = Stopwatch.StartNew();
         var spec = context.RawSpec ?? throw new InvalidOperationException("RawSpec not set");
         var graph = new SemanticGraph();
 
         var lines = spec.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
         ProgramNode? program = null;
-        LoopNode? loop = null;
         string? pendingBranchCondition = null;
         int? pendingBranchDivisor = null;
-
-        // Track last branch so we can attach its print node
         BranchNode? lastBranch = null;
 
         foreach (var line in lines)
@@ -51,18 +56,6 @@ public class SemanticGraphPass : ICompilerPass
                 var name = line["program:".Length..].Trim();
                 program = new ProgramNode(Guid.NewGuid(), $"Program:{name}", name);
                 graph.Add(program);
-            }
-            else if (line == "loop:")
-            {
-                // will be filled by from:/to: lines
-            }
-            else if (line.StartsWith("from:") && loop == null)
-            {
-                // handled together with to:
-            }
-            else if (line.StartsWith("to:") && loop == null)
-            {
-                // scan back for from — simpler: just parse them in a two-pass
             }
             else if (line.StartsWith("branch:"))
             {
@@ -100,25 +93,25 @@ public class SemanticGraphPass : ICompilerPass
                 if (program != null)
                     graph.Connect(program.Id, lastBranch.Id, EdgeType.Contains);
             }
-            else if (line.StartsWith("variable:"))
-            {
-                // handled by name:/type: lines
-            }
-            else if (line.StartsWith("name:"))
-            {
-                // stash for variable
-            }
-            else if (line.StartsWith("type:"))
-            {
-                // stash for variable
-            }
         }
 
-        // Two-pass for loop and variable (simpler than inline state machine)
         BuildLoopNode(lines, graph, program);
         BuildVariableNode(lines, graph, program);
 
+        // Warn about absent structural sections
+        if (!graph.Nodes.OfType<LoopNode>().Any())
+            _logger.LogWarning("No loop: section found in spec — graph may be incomplete");
+        if (!graph.Nodes.OfType<VariableNode>().Any())
+            _logger.LogWarning("No variable: section found in spec — graph may be incomplete");
+
+        var kindSummary = graph.Nodes
+            .GroupBy(n => n.GetType().Name)
+            .Select(g => $"{g.Key}×{g.Count()}");
+        _logger.LogDebug("Graph: {Nodes} nodes, {Edges} edges — {Kinds}",
+            graph.Nodes.Count, graph.Edges.Count, string.Join(", ", kindSummary));
+
         context.SemanticGraph = graph;
+        _logger.LogInformation("Pass {Name} completed in {ElapsedMs}ms", Name, sw.ElapsedMilliseconds);
         return Task.CompletedTask;
     }
 

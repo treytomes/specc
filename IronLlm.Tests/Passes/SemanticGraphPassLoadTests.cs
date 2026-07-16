@@ -1,5 +1,4 @@
 using IronLlm.Graph;
-using IronLlm.Passes;
 using IronLlm.Tests.Fixtures;
 using System.Text.Json;
 
@@ -20,7 +19,7 @@ public class SemanticGraphPassLoadTests
         {
             await File.WriteAllTextAsync(tmp, json);
             var loaded = PipelineFixtures.MakeContext();
-            await new SemanticGraphPass().LoadFromArtifactAsync(tmp, loaded);
+            await PipelineFixtures.MakeSemanticGraphPass().LoadFromArtifactAsync(tmp, loaded);
             Assert.NotNull(loaded.SemanticGraph);
             Assert.Equal(graph.Nodes.Count, loaded.SemanticGraph.Nodes.Count);
             Assert.Equal(graph.Edges.Count, loaded.SemanticGraph.Edges.Count);
@@ -41,7 +40,7 @@ public class SemanticGraphPassLoadTests
         {
             await File.WriteAllTextAsync(tmp, json);
             var loaded = PipelineFixtures.MakeContext();
-            await new SemanticGraphPass().LoadFromArtifactAsync(tmp, loaded);
+            await PipelineFixtures.MakeSemanticGraphPass().LoadFromArtifactAsync(tmp, loaded);
             Assert.Single(loaded.SemanticGraph!.Nodes.OfType<ProgramNode>());
         }
         finally { File.Delete(tmp); }
