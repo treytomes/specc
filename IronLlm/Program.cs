@@ -53,7 +53,7 @@ compileCommand.SetAction(async result =>
     var verbose = result.GetValue(verboseOpt);
 
     var specPath = spec?.FullName
-        ?? Path.GetFullPath("examples/FizzBuzz/FizzBuzz.spec");
+        ?? Path.GetFullPath("examples/FizzBuzz/FizzBuzz.md");
 
     var artifactsDir = outDir?.FullName
         ?? Path.Combine(Path.GetDirectoryName(specPath)!, "artifacts");
@@ -94,14 +94,22 @@ compileCommand.SetAction(async result =>
     builder.Logging.ClearProviders();
     builder.Logging.AddSerilog(Log.Logger, dispose: true);
 
+    var isMarkdown = specPath.EndsWith(".md", StringComparison.OrdinalIgnoreCase);
+
     builder.Services
         .AddSingleton<IEmbeddingGenerator<string, Embedding<float>>>(_ =>
             new OllamaEmbeddingGenerator(new Uri(ollamaBase), embedModel))
         .AddSingleton<IChatClient>(_ =>
-            new OllamaChatClient(new Uri(ollamaBase), chatModel))
+            new OllamaChatClient(new Uri(ollamaBase), chatModel));
+
+    if (isMarkdown)
+        builder.Services.AddTransient<ICompilerPass, MarkdownSpecPass>();
+
+    builder.Services
         .AddTransient<ICompilerPass, ParseSpecPass>()
         .AddTransient<ICompilerPass, SemanticGraphPass>()
         .AddTransient<ICompilerPass, EmbeddingPass>()
+        .AddTransient<ICompilerPass, SemanticNormalizationPass>()
         .AddTransient<ICompilerPass, CfgPass>()
         .AddTransient<ICompilerPass, StackIrPass>()
         .AddTransient<ICompilerPass, MsilGenerationPass>()
