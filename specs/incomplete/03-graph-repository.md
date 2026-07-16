@@ -72,8 +72,46 @@ No external vector database needed for this scale.
 
 `{workingDirectory}/repository/` — sibling to `Artifacts/`. Configurable via CLI arg.
 
+## Storing API and Integration Knowledge
+
+The repository should also persist *integration knowledge* discovered at runtime — not just compiled graphs. When the compiler successfully integrates with an external system (an SDK, an Ollama API, a .NET reflection API), it can record what it learned: the correct call shape, the version it was tested against, and the contract it satisfies.
+
+### Motivation
+
+During development of Spec 09 (CLI), the correct `System.CommandLine` 2.0 API was not known in advance. The compiler had to probe the assembly via reflection to discover that `Option<T>` takes `(string name, string[] aliases)` — not a named `description:` parameter — and that `SetAction` receives a `ParseResult` rather than individual typed arguments. This is non-obvious, version-specific knowledge that took multiple build-fail-inspect cycles to establish.
+
+If that learning were stored in the repository as a structured `ApiKnowledgeRecord`, a future compilation (or a future session of the compiler itself) could retrieve it before attempting to generate code that calls the same package.
+
+### `ApiKnowledgeRecord` Shape
+
+```json
+{
+  "id": "uuid",
+  "packageId": "System.CommandLine",
+  "version": "2.0.10",
+  "discoveredAt": "2026-07-16T12:00:00Z",
+  "notes": "Option<T> ctor is (string name, string[] aliases). Description is a property. SetAction receives ParseResult; use result.GetValue(option) to extract values. InvokeAsync is on ParseResult, not RootCommand.",
+  "embedding": [...]
+}
+```
+
+The embedding is computed from `notes` — so that future queries like "how do I use System.CommandLine options" surface this record via cosine similarity, even if the exact package name isn't in the query.
+
+### Retrieval at Code-Generation Time
+
+Any future LLM-driven pass (Spec 10 Markdown ingestion, Spec 12 Semantic Normalization) that generates code calling an external API first queries the repository for relevant `ApiKnowledgeRecord`s and includes them in its prompt as grounding. This makes the LLM an informed adapter rather than a guesser.
+
+### Recording Policy
+
+API knowledge is recorded whenever:
+1. A build fails due to a missing member or wrong signature, AND
+2. The correct shape is subsequently discovered and the build succeeds.
+
+The record is written automatically by the pipeline after a successful compile that followed at least one API-related build failure in the same session. Manual records can also be added via a CLI command (`ironllm knowledge add --package ... --note ...`).
+
 ## Open Questions
 
 - Should the repository store only successful compilations (i.e. those that pass all invariants), or all attempts? Suggested: successes only — the repository should be a library of known-good patterns.
 - Similarity threshold for surfacing a prior: start at 0.85, tune empirically.
 - What is a "subgraph" for retrieval purposes — individual nodes, or connected components? Start with individual nodes; connected components are a later optimisation.
+- How should `ApiKnowledgeRecord`s be scoped — per-package, per-type, or per-method? Start per-package with free-form notes; structured per-method records are a later refinement.
