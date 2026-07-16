@@ -11,6 +11,7 @@ namespace IronLlm.Graph;
 [JsonDerivedType(typeof(ModuloNode), "Modulo")]
 [JsonDerivedType(typeof(ComparisonNode), "Comparison")]
 [JsonDerivedType(typeof(VariableNode), "Variable")]
+[JsonDerivedType(typeof(AssertionNode), "Assertion")]
 public abstract record Node(Guid Id, string Label);
 
 public record ProgramNode(Guid Id, string Label, string Name) : Node(Id, Label);
@@ -21,3 +22,4 @@ public record PrintNode(Guid Id, string Label, string Template) : Node(Id, Label
 public record ModuloNode(Guid Id, string Label, int Divisor) : Node(Id, Label);
 public record ComparisonNode(Guid Id, string Label, string Op) : Node(Id, Label);
 public record VariableNode(Guid Id, string Label, string Name, string Type) : Node(Id, Label);
+public record AssertionNode(Guid Id, string Label, int Iteration, string Expected) : Node(Id, Label);

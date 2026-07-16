@@ -13,6 +13,8 @@ public class CompilationContext
     public List<CfgBlock> CfgBlocks { get; set; } = [];
     public List<StackInstruction> StackIr { get; set; } = [];
     public bool GraphNormalized { get; set; } = false;
+    public List<AssertionRecord> Assertions { get; set; } = [];
+    public List<AssertionRecord> AuthorialAssertions { get; set; } = [];
 
     public string? MsilOutput    { get; set; }
     public string? AssemblyPath  { get; set; }

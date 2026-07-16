@@ -92,6 +92,9 @@ public class SemanticNormalizationPass : ICompilerPass
         {
             var node = graph.Nodes[i];
 
+            // AssertionNodes are metadata, not semantic program nodes — skip normalization.
+            if (node is AssertionNode) continue;
+
             if (!embeddingMap.TryGetValue(node.Id, out var embedding))
             {
                 _logger.LogWarning("No embedding found for node '{Label}' — skipping normalization", node.Label);

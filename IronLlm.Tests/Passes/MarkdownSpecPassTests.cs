@@ -16,7 +16,7 @@ public class MarkdownSpecPassTests
         both print "FizzBuzz", otherwise print the number.
         """;
 
-    // Chat client that returns a fixed response.
+    // Returns the same response for every call.
     private sealed class StubChatClient(string response) : IChatClient
     {
         public ChatClientMetadata Metadata => new("stub", null, null);
@@ -37,8 +37,36 @@ public class MarkdownSpecPassTests
         public void Dispose() { }
     }
 
+    // Returns queued responses in order; the last queued response is repeated if exhausted.
+    private sealed class QueuedStubChatClient(params string[] responses) : IChatClient
+    {
+        private int _index;
+        public ChatClientMetadata Metadata => new("stub", null, null);
+
+        public Task<ChatResponse> GetResponseAsync(
+            IEnumerable<ChatMessage> messages,
+            ChatOptions? options = null,
+            CancellationToken cancellationToken = default)
+        {
+            var i   = Math.Min(_index++, responses.Length - 1);
+            return Task.FromResult(new ChatResponse(new ChatMessage(ChatRole.Assistant, responses[i])));
+        }
+
+        public IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(
+            IEnumerable<ChatMessage> messages,
+            ChatOptions? options = null,
+            CancellationToken cancellationToken = default)
+            => throw new NotSupportedException();
+
+        public object? GetService(Type serviceType, object? serviceKey = null) => null;
+        public void Dispose() { }
+    }
+
     private static MarkdownSpecPass MakePass(string chatResponse) =>
         new(new StubChatClient(chatResponse), NullLogger<MarkdownSpecPass>.Instance);
+
+    private static MarkdownSpecPass MakeQueuedPass(params string[] responses) =>
+        new(new QueuedStubChatClient(responses), NullLogger<MarkdownSpecPass>.Instance);
 
     private static async Task<CompilationContext> RunPassAsync(
         string chatResponse, string? specContent = null)
@@ -133,5 +161,127 @@ public class MarkdownSpecPassTests
     public void ArtifactFile_IsExpectedFilename()
     {
         Assert.Equal("00-extracted.spec", MakePass("").ArtifactFile);
+    }
+
+    // ── Authorial criteria extraction ─────────────────────────────────────────
+
+    private static readonly string ValidCriteriaJson = """
+        {
+          "loopFrom": 1,
+          "loopTo": 100,
+          "rules": [
+            { "divisor": 15, "expected": "FizzBuzz" },
+            { "divisor": 3,  "expected": "Fizz"     },
+            { "divisor": 5,  "expected": "Buzz"     },
+            { "isDefault": true, "expected": "{n}"  }
+          ]
+        }
+        """;
+
+    private static async Task<(CompilationContext ctx, string artifactsDir)> RunQueuedPassAsync(
+        string specResponse, string criteriaResponse)
+    {
+        var tmp    = Path.GetTempFileName() + ".md";
+        var outDir = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
+        Directory.CreateDirectory(outDir);
+        await File.WriteAllTextAsync(tmp, SampleMarkdown);
+        var ctx = new CompilationContext { SpecPath = tmp, ArtifactsDir = outDir };
+        await MakeQueuedPass(specResponse, criteriaResponse).ExecuteAsync(ctx);
+        File.Delete(tmp);
+        return (ctx, outDir);
+    }
+
+    [Fact]
+    public async Task Execute_PopulatesAuthorialAssertions_WhenCriteriaExtracted()
+    {
+        var (ctx, dir) = await RunQueuedPassAsync(ValidSpec, ValidCriteriaJson);
+        try
+        {
+            Assert.Equal(100, ctx.AuthorialAssertions.Count);
+        }
+        finally { Directory.Delete(dir, recursive: true); }
+    }
+
+    [Fact]
+    public async Task Execute_AuthorialAssertions_AreCorrect()
+    {
+        var (ctx, dir) = await RunQueuedPassAsync(ValidSpec, ValidCriteriaJson);
+        try
+        {
+            Assert.Equal("Fizz",     ctx.AuthorialAssertions[2].Expected);   // iteration 3
+            Assert.Equal("Buzz",     ctx.AuthorialAssertions[4].Expected);   // iteration 5
+            Assert.Equal("FizzBuzz", ctx.AuthorialAssertions[14].Expected);  // iteration 15
+            Assert.Equal("1",        ctx.AuthorialAssertions[0].Expected);   // iteration 1
+        }
+        finally { Directory.Delete(dir, recursive: true); }
+    }
+
+    [Fact]
+    public async Task Execute_WritesCriteriaFileToDisk_WhenRulesPresent()
+    {
+        var (ctx, dir) = await RunQueuedPassAsync(ValidSpec, ValidCriteriaJson);
+        try
+        {
+            var criteriaPath = Path.Combine(dir, "00-authorial-criteria.json");
+            Assert.True(File.Exists(criteriaPath));
+        }
+        finally { Directory.Delete(dir, recursive: true); }
+    }
+
+    [Fact]
+    public async Task Execute_AuthorialAssertions_EmptyWhenModelReturnsEmptyObject()
+    {
+        var (ctx, dir) = await RunQueuedPassAsync(ValidSpec, "{}");
+        try
+        {
+            Assert.Empty(ctx.AuthorialAssertions);
+        }
+        finally { Directory.Delete(dir, recursive: true); }
+    }
+
+    [Fact]
+    public async Task LoadFromArtifact_RestoresAuthorialAssertions_WhenFilePresent()
+    {
+        var (ctx1, dir) = await RunQueuedPassAsync(ValidSpec, ValidCriteriaJson);
+        try
+        {
+            // Simulate a re-run: build a fresh context and load from artifact.
+            var specArtifact = Path.Combine(dir, "00-extracted.spec");
+            var ctx2 = PipelineFixtures.MakeContext();
+            await MakeQueuedPass(ValidSpec, ValidCriteriaJson)
+                .LoadFromArtifactAsync(specArtifact, ctx2);
+            Assert.Equal(100, ctx2.AuthorialAssertions.Count);
+        }
+        finally { Directory.Delete(dir, recursive: true); }
+    }
+
+    [Fact]
+    public static void EvaluateRules_ReturnsEmpty_WhenDtoHasNoRules()
+    {
+        var result = MarkdownSpecPass.EvaluateRules(new AuthorialCriteriaDto());
+        Assert.Empty(result);
+    }
+
+    [Fact]
+    public static void EvaluateRules_ProducesCorrectFizzBuzz()
+    {
+        var dto = new AuthorialCriteriaDto
+        {
+            LoopFrom = 1,
+            LoopTo   = 15,
+            Rules    =
+            [
+                new AuthorialRuleDto { Divisor = 15, Expected = "FizzBuzz" },
+                new AuthorialRuleDto { Divisor = 3,  Expected = "Fizz"     },
+                new AuthorialRuleDto { Divisor = 5,  Expected = "Buzz"     },
+                new AuthorialRuleDto { IsDefault = true, Expected = "{n}"  },
+            ],
+        };
+        var result = MarkdownSpecPass.EvaluateRules(dto);
+        Assert.Equal(15, result.Count);
+        Assert.Equal("1",        result[0].Expected);
+        Assert.Equal("Fizz",     result[2].Expected);
+        Assert.Equal("Buzz",     result[4].Expected);
+        Assert.Equal("FizzBuzz", result[14].Expected);
     }
 }

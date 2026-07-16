@@ -9,6 +9,7 @@ public enum EdgeType
     TrueBranch,
     FalseBranch,
     DependsOn,
+    Asserts,
 }
 
 public record Edge(Guid Id, Guid From, Guid To, EdgeType Type);

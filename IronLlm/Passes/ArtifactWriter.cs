@@ -66,9 +66,17 @@ public static class ArtifactWriter
                 }
                 break;
 
+            case AcceptanceCriteriaPass:
+                await WriteJson("00-acceptance.json", ctx.Assertions, ctx, logger);
+                break;
+
             case AssemblyEmitPass:
                 if (ctx.AssemblyPath != null) logger.LogDebug("Artifact written: {Path}", ctx.AssemblyPath);
                 if (ctx.LauncherPath != null) logger.LogDebug("Artifact written: {Path}", ctx.LauncherPath);
+                break;
+
+            case AcceptanceVerificationPass:
+                // Terminal pass — no artifact.
                 break;
         }
     }

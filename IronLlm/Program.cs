@@ -108,12 +108,14 @@ compileCommand.SetAction(async result =>
     builder.Services
         .AddTransient<ICompilerPass, ParseSpecPass>()
         .AddTransient<ICompilerPass, SemanticGraphPass>()
+        .AddTransient<ICompilerPass, AcceptanceCriteriaPass>()
         .AddTransient<ICompilerPass, EmbeddingPass>()
         .AddTransient<ICompilerPass, SemanticNormalizationPass>()
         .AddTransient<ICompilerPass, CfgPass>()
         .AddTransient<ICompilerPass, StackIrPass>()
         .AddTransient<ICompilerPass, MsilGenerationPass>()
         .AddTransient<ICompilerPass, AssemblyEmitPass>()
+        .AddTransient<ICompilerPass, AcceptanceVerificationPass>()
         .AddTransient<CompilationPipeline>();
 
     using var host = builder.Build();

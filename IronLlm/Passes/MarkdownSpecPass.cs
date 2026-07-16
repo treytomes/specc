@@ -1,5 +1,7 @@
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using IronLlm.Graph;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
@@ -7,7 +9,7 @@ using Microsoft.Extensions.Logging;
 namespace IronLlm.Passes;
 
 // Runs only when the input file has a .md extension.
-// Sends the Markdown document to the LLM and extracts a .spec file from the response.
+// Makes two LLM calls: one to extract a .spec, one to extract explicit acceptance criteria.
 // When the input is already a .spec file this pass is a no-op (ArtifactFile returns null).
 [ExcludeFromCodeCoverage(Justification = "LLM I/O path; covered by scripts/test.sh")]
 public class MarkdownSpecPass : ICompilerPass
@@ -40,13 +42,30 @@ public class MarkdownSpecPass : ICompilerPass
 
         ValidateExtracted(extracted, context.SpecPath);
 
-        var artifactPath = Path.Combine(context.ArtifactsDir, ArtifactFile!);
         Directory.CreateDirectory(context.ArtifactsDir);
-        await File.WriteAllTextAsync(artifactPath, extracted);
+        var specArtifact = Path.Combine(context.ArtifactsDir, ArtifactFile!);
+        await File.WriteAllTextAsync(specArtifact, extracted);
+        context.SpecPath = specArtifact;
 
-        context.SpecPath = artifactPath;
+        // Second LLM call: extract acceptance rules from prose (authorial intent).
+        var criteria = await ExtractAuthorialCriteriaAsync(markdown);
+        var authorial = EvaluateRules(criteria);
+        if (authorial.Count > 0)
+        {
+            context.AuthorialAssertions = authorial;
+            var criteriaPath = Path.Combine(context.ArtifactsDir, "00-authorial-criteria.json");
+            await File.WriteAllTextAsync(criteriaPath,
+                JsonSerializer.Serialize(authorial, new JsonSerializerOptions { WriteIndented = true }));
+            _logger.LogInformation("Extracted {Count} authorial assertions → {Path}",
+                authorial.Count, criteriaPath);
+        }
+        else
+        {
+            _logger.LogDebug("No extractable acceptance criteria in Markdown — falling back to graph-derived");
+        }
+
         _logger.LogInformation("Pass {Name} completed in {ElapsedMs}ms → {Artifact}",
-            Name, sw.ElapsedMilliseconds, artifactPath);
+            Name, sw.ElapsedMilliseconds, specArtifact);
     }
 
     public async Task LoadFromArtifactAsync(string artifactPath, CompilationContext context)
@@ -57,19 +76,98 @@ public class MarkdownSpecPass : ICompilerPass
             context.SpecPath = artifactPath;
             _logger.LogDebug("Loaded extracted spec from {Path}", artifactPath);
         }
-        await Task.CompletedTask;
+
+        // Also restore authorial criteria if they were produced.
+        var criteriaPath = Path.Combine(Path.GetDirectoryName(artifactPath)!, "00-authorial-criteria.json");
+        if (File.Exists(criteriaPath))
+        {
+            var json = await File.ReadAllTextAsync(criteriaPath);
+            var opts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+            context.AuthorialAssertions =
+                JsonSerializer.Deserialize<List<AssertionRecord>>(json, opts) ?? [];
+            _logger.LogDebug("Loaded {Count} authorial assertions from {Path}",
+                context.AuthorialAssertions.Count, criteriaPath);
+        }
     }
 
     private async Task<string> ExtractSpecAsync(string markdown)
     {
         var messages = new List<ChatMessage>
         {
-            new(ChatRole.System, SystemPrompt),
+            new(ChatRole.System, SpecSystemPrompt),
             new(ChatRole.User, markdown),
         };
 
         var response = await _chat.GetResponseAsync(messages);
         return response.Text?.Trim() ?? "";
+    }
+
+    private async Task<AuthorialCriteriaDto> ExtractAuthorialCriteriaAsync(string markdown)
+    {
+        var messages = new List<ChatMessage>
+        {
+            new(ChatRole.System, CriteriaSystemPrompt),
+            new(ChatRole.User, markdown),
+        };
+
+        try
+        {
+            var response = await _chat.GetResponseAsync(messages);
+            var text = response.Text?.Trim() ?? "{}";
+
+            // Strip markdown fences if the model wrapped it.
+            if (text.StartsWith("```", StringComparison.Ordinal))
+            {
+                var start = text.IndexOf('{');
+                var end   = text.LastIndexOf('}');
+                if (start >= 0 && end > start)
+                    text = text[start..(end + 1)];
+            }
+
+            var opts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+            return JsonSerializer.Deserialize<AuthorialCriteriaDto>(text, opts) ?? new AuthorialCriteriaDto();
+        }
+        catch
+        {
+            return new AuthorialCriteriaDto();
+        }
+    }
+
+    // Evaluates extracted rules locally, same algorithm as AcceptanceCriteriaPass.
+    public static List<AssertionRecord> EvaluateRules(AuthorialCriteriaDto dto)
+    {
+        if (dto.Rules == null || dto.Rules.Count == 0 || dto.LoopTo <= dto.LoopFrom)
+            return [];
+
+        var modRules = dto.Rules
+            .Where(r => !r.IsDefault && r.Divisor > 0)
+            .OrderByDescending(r => r.Divisor)
+            .ToList();
+        var defaultRule = dto.Rules.FirstOrDefault(r => r.IsDefault);
+
+        var assertions = new List<AssertionRecord>(dto.LoopTo - dto.LoopFrom + 1);
+        for (var i = dto.LoopFrom; i <= dto.LoopTo; i++)
+        {
+            var matched = false;
+            foreach (var rule in modRules)
+            {
+                if (i % rule.Divisor == 0)
+                {
+                    assertions.Add(new AssertionRecord(i, rule.Expected ?? i.ToString()));
+                    matched = true;
+                    break;
+                }
+            }
+            if (!matched)
+            {
+                var expected = defaultRule?.Expected ?? "{n}";
+                // Resolve variable placeholder.
+                if (expected.StartsWith('{') && expected.EndsWith('}'))
+                    expected = i.ToString();
+                assertions.Add(new AssertionRecord(i, expected));
+            }
+        }
+        return assertions;
     }
 
     // Runs the SemanticGraphPass parser against the extracted text to confirm it
@@ -98,7 +196,7 @@ public class MarkdownSpecPass : ICompilerPass
                 "LLM extraction produced a .spec with no program: declaration.");
     }
 
-    private const string SystemPrompt = """
+    private const string SpecSystemPrompt = """
         You are a compiler front-end. Your job is to read a program specification written
         in Markdown and extract it as a structured .spec file.
 
@@ -127,4 +225,44 @@ public class MarkdownSpecPass : ICompilerPass
         5. If the document describes a program that cannot be expressed in this format,
            output a single line: ERROR: <reason>
         """;
+
+    private const string CriteriaSystemPrompt = """
+        You are a test oracle. Your job is to read a program specification written in Markdown
+        and extract the explicit acceptance criteria as a compact JSON object.
+
+        Return ONLY valid JSON with no explanation and no markdown fences:
+
+        {
+          "loopFrom": <int>,
+          "loopTo": <int>,
+          "rules": [
+            { "divisor": <int>, "expected": "<string>" },
+            ...
+            { "isDefault": true, "expected": "<string or {variable}>" }
+          ]
+        }
+
+        Rules:
+        1. Sort rules by divisor descending (most-constrained first), default rule last.
+        2. Use the exact output string the author stated (e.g. "FizzBuzz", "Fizz", "Buzz").
+        3. For the default/fallback case, use "{n}" (or the variable name in braces) if the
+           output is the number itself.
+        4. If the document does not contain explicit acceptance criteria, return exactly: {}
+        """;
+}
+
+public class AuthorialCriteriaDto
+{
+    public int LoopFrom { get; set; } = 1;
+    public int LoopTo   { get; set; } = 0;
+
+    [JsonPropertyName("rules")]
+    public List<AuthorialRuleDto>? Rules { get; set; }
+}
+
+public class AuthorialRuleDto
+{
+    public int    Divisor   { get; set; }
+    public bool   IsDefault { get; set; }
+    public string? Expected { get; set; }
 }

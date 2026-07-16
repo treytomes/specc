@@ -46,14 +46,15 @@ public class EmbeddingPass : ICompilerPass
     public Task ExecuteAsync(CompilationContext context)
     {
         var graph = context.SemanticGraph ?? throw new InvalidOperationException("SemanticGraph not set");
-        _logger.LogInformation("Embedding {Count} nodes", graph.Nodes.Count);
+        var embedCount = graph.Nodes.Count(n => n is not AssertionNode);
+        _logger.LogInformation("Embedding {Count} nodes", embedCount);
         return EmbedAllAsync(graph, context);
     }
 
     private async Task EmbedAllAsync(SemanticGraph graph, CompilationContext context)
     {
         var sw      = Stopwatch.StartNew();
-        var tasks   = graph.Nodes.Select(n => EmbedNodeAsync(n));
+        var tasks   = graph.Nodes.Where(n => n is not AssertionNode).Select(n => EmbedNodeAsync(n));
         var results = await Task.WhenAll(tasks);
         context.Embeddings = [.. results];
         _logger.LogInformation("Pass {Name} completed in {ElapsedMs}ms", Name, sw.ElapsedMilliseconds);
