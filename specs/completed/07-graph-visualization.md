@@ -1,6 +1,6 @@
 # Spec 07 — Graph Visualization
 
-**Status:** Ready to implement  
+**Status:** Complete  
 **Scope:** New `Passes/GraphVisualizationPass.cs`, new artifact `02b-semantic-graph.mmd`
 
 ## Goal
