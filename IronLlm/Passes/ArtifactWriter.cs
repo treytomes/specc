@@ -1,6 +1,7 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Microsoft.Extensions.Logging;
 
 namespace IronLlm.Passes;
 
@@ -13,15 +14,15 @@ public static class ArtifactWriter
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
 
-    // Called immediately after each pass succeeds in the incremental pipeline.
-    public static async Task WritePassArtifactAsync(ICompilerPass pass, CompilationContext ctx)
+    public static async Task WritePassArtifactAsync(
+        ICompilerPass pass, CompilationContext ctx, ILogger logger)
     {
         Directory.CreateDirectory(ctx.ArtifactsDir);
 
         switch (pass)
         {
             case ParseSpecPass:
-                await WriteJson("01-spec.json", new { raw = ctx.RawSpec }, ctx);
+                await WriteJson("01-spec.json", new { raw = ctx.RawSpec }, ctx, logger);
                 break;
 
             case SemanticGraphPass:
@@ -29,7 +30,7 @@ public static class ArtifactWriter
                 {
                     nodes = ctx.SemanticGraph?.Nodes,
                     edges = ctx.SemanticGraph?.Edges,
-                }, ctx);
+                }, ctx, logger);
                 break;
 
             case EmbeddingPass:
@@ -39,15 +40,15 @@ public static class ArtifactWriter
                     label      = e.NodeLabel,
                     dimensions = e.Vector.Length,
                     vector     = e.Vector,
-                }), ctx);
+                }), ctx, logger);
                 break;
 
             case CfgPass:
-                await WriteJson("04-cfg.json", ctx.CfgBlocks, ctx);
+                await WriteJson("04-cfg.json", ctx.CfgBlocks, ctx, logger);
                 break;
 
             case StackIrPass:
-                await WriteJson("05-stackir.json", ctx.StackIr, ctx);
+                await WriteJson("05-stackir.json", ctx.StackIr, ctx, logger);
                 break;
 
             case MsilGenerationPass:
@@ -55,21 +56,22 @@ public static class ArtifactWriter
                 {
                     var path = Path.Combine(ctx.ArtifactsDir, "06-program.il");
                     await File.WriteAllTextAsync(path, ctx.MsilOutput);
-                    Console.WriteLine($"  → {path}");
+                    logger.LogDebug("Artifact written: {Path}", path);
                 }
                 break;
 
             case AssemblyEmitPass:
-                if (ctx.AssemblyPath  != null) Console.WriteLine($"  → {ctx.AssemblyPath}");
-                if (ctx.LauncherPath  != null) Console.WriteLine($"  → {ctx.LauncherPath}");
+                if (ctx.AssemblyPath != null) logger.LogDebug("Artifact written: {Path}", ctx.AssemblyPath);
+                if (ctx.LauncherPath != null) logger.LogDebug("Artifact written: {Path}", ctx.LauncherPath);
                 break;
         }
     }
 
-    private static async Task WriteJson(string filename, object? data, CompilationContext ctx)
+    private static async Task WriteJson(
+        string filename, object? data, CompilationContext ctx, ILogger logger)
     {
         var path = Path.Combine(ctx.ArtifactsDir, filename);
         await File.WriteAllTextAsync(path, JsonSerializer.Serialize(data, Opts));
-        Console.WriteLine($"  → {path}");
+        logger.LogDebug("Artifact written: {Path}", path);
     }
 }

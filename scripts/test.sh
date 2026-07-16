@@ -54,7 +54,7 @@ echo "Running pipeline..."
 dotnet run \
     --project "$REPO_ROOT/IronLlm/IronLlm.csproj" \
     --no-build \
-    -- "$SPEC" "$ARTIFACTS"
+    -- compile --spec "$SPEC" --out "$ARTIFACTS"
 
 echo
 echo "Checking artifacts..."

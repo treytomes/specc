@@ -10,6 +10,13 @@ namespace IronLlm.Passes;
 [ExcludeFromCodeCoverage(Justification = "Requires live Ollama; covered by scripts/test.sh")]
 public class EmbeddingPass : ICompilerPass
 {
+    private readonly IEmbeddingGenerator<string, Embedding<float>> _embedder;
+
+    public EmbeddingPass(IEmbeddingGenerator<string, Embedding<float>> embedder)
+    {
+        _embedder = embedder;
+    }
+
     public string Name          => "03-Embeddings";
     public string? ArtifactFile  => "03-embeddings.json";
 
@@ -36,17 +43,17 @@ public class EmbeddingPass : ICompilerPass
         return EmbedAllAsync(graph, context);
     }
 
-    private static async Task EmbedAllAsync(SemanticGraph graph, CompilationContext context)
+    private async Task EmbedAllAsync(SemanticGraph graph, CompilationContext context)
     {
-        var tasks = graph.Nodes.Select(n => EmbedNodeAsync(n, context));
+        var tasks = graph.Nodes.Select(n => EmbedNodeAsync(n));
         var results = await Task.WhenAll(tasks);
         context.Embeddings = [.. results];
     }
 
-    private static async Task<NodeEmbedding> EmbedNodeAsync(Node node, CompilationContext context)
+    private async Task<NodeEmbedding> EmbedNodeAsync(Node node)
     {
         var description = Describe(node);
-        var result = await context.Embedder.GenerateAsync([description]);
+        var result = await _embedder.GenerateAsync([description]);
         var vector = result[0].Vector.ToArray();
         return new NodeEmbedding(node.Id, node.Label, vector);
     }

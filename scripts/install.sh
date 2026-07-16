@@ -96,10 +96,21 @@ else
     missing "python3" "used by test.sh for artifact inspection — install python3"
 fi
 
+# ── .env bootstrap ────────────────────────────────────────────────────────────
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+echo "Checking .env..."
+if [[ -f "$REPO_ROOT/.env" ]]; then
+    ok ".env (exists)"
+elif [[ -f "$REPO_ROOT/.env.example" ]]; then
+    cp "$REPO_ROOT/.env.example" "$REPO_ROOT/.env"
+    installed ".env (copied from .env.example)"
+else
+    echo "  OPTIONAL  .env — create manually from .env.example"
+fi
+
 # ── NuGet restore ─────────────────────────────────────────────────────────────
 echo "Restoring NuGet packages..."
-REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-if dotnet restore "$REPO_ROOT/IronLlm/IronLlm.csproj" -q; then
+if dotnet restore "$REPO_ROOT/IronLlm.slnx" -q 2>/dev/null || dotnet restore "$REPO_ROOT/IronLlm/IronLlm.csproj" -q; then
     ok "NuGet packages restored"
 else
     missing "NuGet restore" "check network connectivity or NuGet feed"

@@ -45,8 +45,6 @@ internal static class PipelineFixtures
     {
         SpecPath     = specPath ?? "fake.spec",
         ArtifactsDir = Path.GetTempPath(),
-        Embedder     = NullEmbedder.Instance,
-        ChatClient   = NullChatClient.Instance,
     };
 
     public static CompilationContext AfterParse()

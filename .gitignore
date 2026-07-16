@@ -4,3 +4,4 @@ obj
 TestResults
 IronLlm/Artifacts
 IronLlm/Spec
+.env
