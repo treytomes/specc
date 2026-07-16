@@ -98,6 +98,15 @@ public static StackIrPass MakeStackIrPass() =>
 
 `AfterCfg()`, `AfterStackIr()`, etc. use these factory helpers instead of `new CfgPass()` directly.
 
+## Log sinks
+
+Serilog is already wired in `Program.cs` with two sinks:
+
+- **Console** — `[INF] message` format, human-readable at a glance
+- **Rolling file** — `<artifacts-dir>/logs/ironllm-YYYYMMDD.log`, structured template with timestamps; rolls daily
+
+All `ILogger<T>` calls from passes flow through Serilog automatically. No sink changes are needed as part of this spec.
+
 ## What does NOT change
 
 - `ICompilerPass` interface signature — no `ILogger` in the contract

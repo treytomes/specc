@@ -4,6 +4,8 @@ using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Serilog;
+using Serilog.Events;
 
 // ── .env config (Spec 08) ────────────────────────────────────────────────────
 var repoRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
@@ -75,11 +77,22 @@ compileCommand.SetAction(async result =>
     }
 
     // ── Host + DI ─────────────────────────────────────────────────────────────
-    var builder = Host.CreateApplicationBuilder();
+    var logLevel = verbose ? LogEventLevel.Debug : LogEventLevel.Information;
+    var logDir   = Path.Combine(artifactsDir, "logs");
+    Directory.CreateDirectory(logDir);
 
+    Log.Logger = new LoggerConfiguration()
+        .MinimumLevel.Is(logLevel)
+        .WriteTo.Console(outputTemplate: "[{Level:u3}] {Message:lj}{NewLine}{Exception}")
+        .WriteTo.File(
+            Path.Combine(logDir, "ironllm-.log"),
+            rollingInterval: RollingInterval.Day,
+            outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff} [{Level:u3}] {Message:lj}{NewLine}{Exception}")
+        .CreateLogger();
+
+    var builder = Host.CreateApplicationBuilder();
     builder.Logging.ClearProviders();
-    builder.Logging.AddConsole();
-    builder.Logging.SetMinimumLevel(verbose ? LogLevel.Debug : LogLevel.Information);
+    builder.Logging.AddSerilog(Log.Logger, dispose: true);
 
     builder.Services
         .AddSingleton<IEmbeddingGenerator<string, Embedding<float>>>(_ =>
