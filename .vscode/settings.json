@@ -1,0 +1,15 @@
+{
+	"dotnet.defaultSolution": "IronLlm.slnx",
+	"cSpell.words": [
+		"apphost",
+		"brfalse",
+		"embedder",
+		"ilasm",
+		"ldloc",
+		"ldstr",
+		"mscorlib",
+		"msil",
+		"ollama",
+		"stloc"
+	]
+}
