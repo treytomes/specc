@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using IronLlm.Graph;
 using Microsoft.Extensions.AI;
@@ -6,6 +7,7 @@ namespace IronLlm.Passes;
 
 // Embeds each graph node independently using mxbai-embed-large.
 // Embeddings are metadata — they don't change the graph structure.
+[ExcludeFromCodeCoverage(Justification = "Requires live Ollama; covered by scripts/test.sh")]
 public class EmbeddingPass : ICompilerPass
 {
     public string Name          => "03-Embeddings";

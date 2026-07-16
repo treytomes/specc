@@ -25,6 +25,29 @@ check() {
 # ── Build ────────────────────────────────────────────────────────────────────
 echo "Building..."
 dotnet build "$REPO_ROOT/IronLlm/IronLlm.csproj" --nologo -q
+dotnet build "$REPO_ROOT/IronLlm.Tests/IronLlm.Tests.csproj" --nologo -q
+
+# ── Unit tests + coverage ────────────────────────────────────────────────────
+echo
+echo "Running unit tests..."
+TEST_RESULTS="$REPO_ROOT/TestResults"
+dotnet test "$REPO_ROOT/IronLlm.Tests/IronLlm.Tests.csproj" \
+  --no-build --nologo \
+  --collect:"XPlat Code Coverage" \
+  --settings "$REPO_ROOT/IronLlm.Tests/coverlet.runsettings" \
+  --results-directory "$TEST_RESULTS"
+
+COBERTURA=$(find "$TEST_RESULTS" -name 'coverage.cobertura.xml' | sort | tail -1)
+coverage=$(python3 -c "
+import xml.etree.ElementTree as ET, sys
+tree = ET.parse(sys.argv[1])
+root = tree.getroot()
+rate = float(root.attrib.get('line-rate', 0)) * 100
+print(f'{rate:.1f}')
+" "$COBERTURA")
+
+check "unit test coverage ≥ 80% (got ${coverage}%)" \
+  "$(python3 -c "print('ok' if float('$coverage') >= 80 else 'below threshold')")"
 
 # ── Run pipeline ─────────────────────────────────────────────────────────────
 echo "Running pipeline..."

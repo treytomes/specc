@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using System.Reflection.Emit;
 using System.Reflection.Metadata;
@@ -15,6 +16,7 @@ namespace IronLlm.Passes;
 //   07-program.dll            — the managed PE (framework-dependent)
 //   07-program.runtimeconfig.json
 //   {ProgramName}             — apphost-patched native launcher, directly executable
+[ExcludeFromCodeCoverage(Justification = "PE emit + apphost filesystem I/O; covered by scripts/test.sh")]
 public class AssemblyEmitPass : ICompilerPass
 {
     public string Name          => "07-Assembly";

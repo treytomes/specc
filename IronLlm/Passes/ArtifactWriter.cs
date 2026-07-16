@@ -1,8 +1,10 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace IronLlm.Passes;
 
+[ExcludeFromCodeCoverage(Justification = "Filesystem I/O dispatch; covered by scripts/test.sh")]
 public static class ArtifactWriter
 {
     private static readonly JsonSerializerOptions Opts = new()
