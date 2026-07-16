@@ -30,10 +30,16 @@ public class MsilGenerationPass : ICompilerPass
         var sw = Stopwatch.StartNew();
         var sb = new StringBuilder();
 
-        sb.AppendLine(".assembly FizzBuzz {}");
-        sb.AppendLine(".class public FizzBuzz {");
+        var programName = context.SemanticGraph?
+            .Nodes.OfType<IronLlm.Graph.ProgramNode>().FirstOrDefault()?.Name
+            ?? "Program";
+
+        sb.AppendLine($".assembly extern mscorlib {{}}");
+        sb.AppendLine($".assembly {programName} {{}}");
+        sb.AppendLine($".class public {programName} extends [mscorlib]System.Object {{");
         sb.AppendLine("  .method public static void Main() cil managed {");
         sb.AppendLine("    .entrypoint");
+        sb.AppendLine("    .maxstack 4");
         sb.AppendLine("    .locals init (int32 V_0)");
         sb.AppendLine();
 

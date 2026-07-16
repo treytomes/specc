@@ -109,6 +109,58 @@ public class StackIrPassTests
         Assert.Contains(BuildContext().StackIr, i => i.Op == OpCode.LdstrS && i.Operand == "Buzz");
     }
 
+    // ── Pattern coverage — verify each CfgPass instruction string lowers correctly ──
+
+    [Theory]
+    [InlineData("n = 1",                  OpCode.LdcI4,  "1")]
+    [InlineData("n = 1",                  OpCode.StlocS, "n")]
+    [InlineData("n = 42",                 OpCode.LdcI4,  "42")]
+    [InlineData("if n > 100 goto exit",   OpCode.LdlocS, "n")]
+    [InlineData("if n > 100 goto exit",   OpCode.LdcI4,  "100")]
+    [InlineData("if n > 100 goto exit",   OpCode.Cgt,    null)]
+    [InlineData("if n % 15 == 0",         OpCode.LdcI4,  "15")]
+    [InlineData("if n % 15 == 0",         OpCode.Rem,    null)]
+    [InlineData("if n % 15 == 0",         OpCode.Ceq,    null)]
+    [InlineData("print n",                OpCode.LdlocS, "n")]
+    [InlineData("print \"Fizz\"",         OpCode.LdstrS, "Fizz")]
+    [InlineData("n = n + 1",              OpCode.Add,    null)]
+    [InlineData("n = n + 1",              OpCode.StlocS, "n")]
+    public void LowerInstruction_ProducesExpectedOp(string instr, OpCode expectedOp, string? expectedOperand)
+    {
+        var pass    = PipelineFixtures.MakeStackIrPass();
+        var lowered = InvokeLower(pass, instr).ToList();
+        Assert.Contains(lowered, op =>
+            op.Op == expectedOp &&
+            (expectedOperand == null || op.Operand == expectedOperand));
+    }
+
+    [Fact]
+    public void LowerInstruction_LoopInit_DoesNotMatchIncrement()
+    {
+        var pass = PipelineFixtures.MakeStackIrPass();
+        // "n = n + 1" must not be treated as init
+        var ops = InvokeLower(pass, "n = n + 1").ToList();
+        Assert.DoesNotContain(ops, op => op.Op == OpCode.LdcI4 && op.Operand == "n");
+    }
+
+    [Fact]
+    public void LowerInstruction_UnrecognisedInstruction_ReturnsEmpty()
+    {
+        var pass = PipelineFixtures.MakeStackIrPass();
+        var ops  = InvokeLower(pass, "XYZZY unknown instruction").ToList();
+        Assert.Empty(ops);
+    }
+
+    // Reflection helper — LowerInstruction is private.
+    private static IEnumerable<StackInstruction> InvokeLower(
+        IronLlm.Passes.StackIrPass pass, string instr)
+    {
+        var method = typeof(IronLlm.Passes.StackIrPass)
+            .GetMethod("LowerInstruction",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
+        return (IEnumerable<StackInstruction>)method.Invoke(null, [instr])!;
+    }
+
     [Fact]
     public void Execute_Throws_WhenCfgBlocksEmpty()
     {

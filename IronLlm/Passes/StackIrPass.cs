@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text.RegularExpressions;
 using IronLlm.Graph;
 using Microsoft.Extensions.Logging;
 
@@ -79,73 +80,70 @@ public class StackIrPass : ICompilerPass
         return Task.CompletedTask;
     }
 
-    // Maps CFG pseudo-instructions to stack ops by recognising common patterns.
-    // Patterns are intentionally broad — the LLM's exact phrasing varies across runs.
+    // Maps deterministic CFG instruction strings to stack ops.
+    // CfgPass emits exact patterns; we match them precisely and extract values via regex.
     private static IEnumerable<StackInstruction> LowerInstruction(string instr)
     {
         var s = instr.Trim();
 
-        // "n = 1" — loop variable initialisation
-        if (s.Contains("n =") && !s.Contains("n = n"))
+        // "{var} = {int}" — loop variable init, e.g. "n = 1"
+        // Must not match "{var} = {var} + 1" (increment).
+        var initMatch = Regex.Match(s, @"^(\w+)\s*=\s*(-?\d+)$");
+        if (initMatch.Success)
         {
-            var digits = new string(s.SkipWhile(c => !char.IsDigit(c)).TakeWhile(char.IsDigit).ToArray());
-            if (int.TryParse(digits, out var initVal))
-            {
-                yield return new(OpCode.LdcI4, initVal.ToString());
-                yield return new(OpCode.StlocS, "n");
-            }
+            yield return new(OpCode.LdcI4,  initMatch.Groups[2].Value);
+            yield return new(OpCode.StlocS, initMatch.Groups[1].Value);
             yield break;
         }
 
-        // "n > 100" / "check n <= 100" — loop test
-        if (s.Contains("100") && (s.Contains("<=") || s.Contains(">") || s.Contains("check n")))
+        // "if {var} > {int} goto exit" — loop termination test
+        var loopTestMatch = Regex.Match(s, @"^if\s+(\w+)\s*>\s*(-?\d+)\s+goto\s+\w+$");
+        if (loopTestMatch.Success)
         {
-            yield return new(OpCode.LdlocS, "n");
-            yield return new(OpCode.LdcI4, "100");
+            yield return new(OpCode.LdlocS, loopTestMatch.Groups[1].Value);
+            yield return new(OpCode.LdcI4,  loopTestMatch.Groups[2].Value);
             yield return new(OpCode.Cgt);
             yield break;
         }
 
-        // "n % 15 == 0" — divisibility check
-        if (s.Contains('%') && s.Contains("== 0"))
+        // "if {var} % {int} == 0" — divisibility check
+        var modMatch = Regex.Match(s, @"^if\s+(\w+)\s*%\s*(-?\d+)\s*==\s*0$");
+        if (modMatch.Success)
         {
-            var afterMod   = s[(s.IndexOf('%') + 1)..];
-            var divisorStr = new string(afterMod.SkipWhile(c => !char.IsDigit(c)).TakeWhile(char.IsDigit).ToArray());
-            if (int.TryParse(divisorStr, out var d))
-            {
-                yield return new(OpCode.LdlocS, "n");
-                yield return new(OpCode.LdcI4, d.ToString());
-                yield return new(OpCode.Rem);
-                yield return new(OpCode.LdcI4, "0");
-                yield return new(OpCode.Ceq);
-            }
+            yield return new(OpCode.LdlocS, modMatch.Groups[1].Value);
+            yield return new(OpCode.LdcI4,  modMatch.Groups[2].Value);
+            yield return new(OpCode.Rem);
+            yield return new(OpCode.LdcI4,  "0");
+            yield return new(OpCode.Ceq);
             yield break;
         }
 
-        // "print {n}" / "print n" — print the integer variable
-        if (s.StartsWith("print") && (s.Contains("{n}") || s.TrimEnd().EndsWith(" n")))
+        // "print {var}" — print integer variable (no quotes, ends with identifier)
+        var printVarMatch = Regex.Match(s, @"^print\s+(\w+)$");
+        if (printVarMatch.Success)
         {
-            yield return new(OpCode.LdlocS, "n");
-            yield return new(OpCode.Call, "Console.WriteLine(int)");
+            yield return new(OpCode.LdlocS, printVarMatch.Groups[1].Value);
+            yield return new(OpCode.Call,   "Console.WriteLine(int)");
             yield break;
         }
 
-        // "print "FizzBuzz"" — print a string literal
-        if (s.StartsWith("print "))
+        // "print "...string..."" — print string literal
+        var printStrMatch = Regex.Match(s, @"^print\s+""(.*)""$");
+        if (printStrMatch.Success)
         {
-            var arg = s["print ".Length..].Trim().Trim('"');
-            yield return new(OpCode.LdstrS, arg);
-            yield return new(OpCode.Call, "Console.WriteLine(string)");
+            yield return new(OpCode.LdstrS, printStrMatch.Groups[1].Value);
+            yield return new(OpCode.Call,   "Console.WriteLine(string)");
             yield break;
         }
 
-        // "n = n + 1" / "n++" / "increment"
-        if (s.Contains("n + 1") || s.Contains("n++") || s.Contains("increment"))
+        // "{var} = {var} + 1" — loop increment
+        var incrMatch = Regex.Match(s, @"^(\w+)\s*=\s*(\w+)\s*\+\s*1$");
+        if (incrMatch.Success)
         {
-            yield return new(OpCode.LdlocS, "n");
-            yield return new(OpCode.LdcI4, "1");
+            yield return new(OpCode.LdlocS, incrMatch.Groups[2].Value);
+            yield return new(OpCode.LdcI4,  "1");
             yield return new(OpCode.Add);
-            yield return new(OpCode.StlocS, "n");
+            yield return new(OpCode.StlocS, incrMatch.Groups[1].Value);
             yield break;
         }
     }
