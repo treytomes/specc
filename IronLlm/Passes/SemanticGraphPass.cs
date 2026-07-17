@@ -305,17 +305,9 @@ public class SemanticGraphPass : ICompilerPass
         void FlushVar()
         {
             if (name == null || type == null) return;
-            if (source?.Equals("stdin", StringComparison.OrdinalIgnoreCase) == true)
-            {
-                // Input variable: represents a Console.ReadLine() into a named string local.
-                var input = new InputNode(Guid.NewGuid(), $"Input:{name}", name);
-                graph.Add(input);
-                if (program != null) graph.Connect(program.Id, input.Id, EdgeType.Contains);
-            }
-            else
-            {
+            // stdin variables are handled inline in the main loop to preserve spec order.
+            if (source?.Equals("stdin", StringComparison.OrdinalIgnoreCase) != true)
                 EmitVariable(graph, program, name, type, initialValue);
-            }
             name = null; type = null; initialValue = null; source = null;
         }
 
