@@ -1,17 +1,39 @@
 # Spec 21 — Direct Graph Extraction from Markdown
 
-**Status:** Deferred — depends on Spec 22 (structured output) as prerequisite  
-**Scope:** `MarkdownSpecPass.cs`, `Program.cs`, `ArtifactWriter.cs`; `ParseSpecPass` and `SemanticGraphPass` become `.spec`-only fallbacks
+**Status:** Deferred — blocked on output format and speed
+**Scope:** `MarkdownSpecPass.cs`; `ParseSpecPass` and `SemanticGraphPass` skip when graph is already set
 
-## Implementation Notes (2026-07-16)
+## Implementation Notes
 
-Attempted with ministral-3b. Two blocking issues discovered:
+### Attempt 1 (2026-07-16) — plain JSON, no schema constraint
+Blocked by two issues:
+1. **Speed**: ~600 JSON output tokens vs ~100 `.spec` tokens → ~13× slower (~13 minutes).
+2. **Structural reliability**: model produced valid JSON but wrong topology — `Comparison` + two `Modulo` nodes instead of `Modulo(15)` for the FizzBuzz "divisible by 3 and 5" case.
 
-1. **Speed**: asking the model to generate ~600 tokens of structured JSON (vs ~100 tokens for the old `.spec` text) made compilation ~13× slower (13 minutes vs ~1 minute). Even with compact integer IDs instead of UUIDs, the output volume is the bottleneck.
+### Attempt 2 (2026-07-17) — JSON with `ChatOptions.ResponseFormat` schema + worked examples
+Implemented with grammar-constrained JSON schema and FizzBuzz/CountDown worked examples in the system prompt. Results:
+1. **Topology correct**: produced `Modulo(15)` as intended. Worked examples solved the structural reliability problem.
+2. **Null properties**: several nodes had null required fields (`Condition`, `Template`, etc.) — model filled `kind` and `id` but omitted type-specific fields. Caused `NullReferenceException` in `EmbeddingPass.Describe`.
+3. **Speed unchanged**: 444 seconds (7+ minutes) for FizzBuzz. `ChatOptions.ResponseFormat` constrained sampling did not reduce latency — the bottleneck is output token volume, not sampling overhead.
 
-2. **Structural reliability**: ministral-3b doesn't reliably produce the graph topology the pipeline requires. For FizzBuzz's "divisible by both 3 and 5" condition it generated a `Comparison` node and two separate `Modulo` nodes (mod3, mod5) with a `DependsOn → Comparison` edge, instead of a single `Modulo(15)` with `DependsOn → Modulo`. This structurally valid but pipeline-incompatible representation broke `AcceptanceCriteriaPass` and `CfgPass`.
+### Root cause of the speed problem
+ministral-3b at 3B parameters generates ~8–10 tokens/second locally. A FizzBuzz graph JSON is ~800 tokens; at 10 tok/s that is ~80 seconds of pure generation time, before any network or decoding overhead. The 444s result suggests the constrained sampling was adding significant overhead on top. The `.spec` text is ~100 tokens → ~10 seconds.
 
-**Revised plan (2026-07-17)**: Spec 22 wires up Ollama's `format` parameter with a JSON Schema via `ChatOptions.ResponseFormat`. With grammar-based sampling constrained to the `SemanticGraph` schema — enumerating valid `kind` discriminator values and required fields per node type — the model cannot produce structurally invalid graph topology. Spec 21 should be revisited after Spec 22 is complete, using the graph schema as the `ResponseFormat`. The speed issue remains (more output tokens than `.spec`) but is more tolerable once structural reliability is solved, and constrained sampling also tends to reduce token waste from prose and re-tries.
+### Path forward: compact intermediate format
+The goal is an intermediate that is:
+- **Short** (close to `.spec` token count, not JSON token count)
+- **Structurally constrained** (model can't produce topologically wrong output)
+- **Parseable without a growing custom parser** (unlike `.spec`, which requires a new branch per construct)
+
+**Candidate: YAML node list with explicit edge notation.**
+YAML eliminates JSON's syntactic overhead (braces, quotes on keys, closing tokens) while remaining structured. A FizzBuzz graph in YAML is approximately 40–50% fewer tokens than the equivalent JSON. The model has extensive YAML training data (k8s, GitHub Actions, docker-compose).
+
+The open question is whether ministral-3b produces well-formed YAML reliably for structured data it hasn't seen before — specifically, whether it fills all required type-specific fields. This should be tested empirically before committing to implementation.
+
+**Candidate: retain `.spec` but make it structurally isomorphic to the graph.**
+Rather than a new format, extend `.spec` so that each construct maps 1:1 to a graph node. The parser becomes a graph builder, not a text interpreter. This avoids a new format but still requires growing the spec syntax per new node type.
+
+**Decision gate**: implement YAML extraction as a spike (single example, measure token count and field completeness) before committing to full implementation. If YAML solves both speed and null-field problems, implement fully. If not, the `.spec` format remains and Spec 21 is deferred until a larger extraction model is available.
 
 ## Motivation
 
