@@ -1,7 +1,22 @@
 # Spec 04 — Differentiable Node MLPs
 
-**Status:** Research / Exploratory  
+**Status:** Incomplete — blocked on geometry validation
+**Depends on:** Spec 35 (embedding geometry validation — confirms the premise before building the MLP layer)
 **Scope:** New `Learning/` directory
+
+## Blockers to implement before this spec
+
+- Spec 35 must be run and the geometry baseline confirmed. If raw embeddings do not cluster by program intent, the MLP architecture needs to be reconsidered before implementation.
+- Enough compiled programs in the repository to make training meaningful (target: 10+ distinct program structures).
+
+## Connection to prose → executable
+
+Spec 04 does not improve extraction reliability directly. Its long-horizon value is enabling **program synthesis by analogy**: embed a prose description, retrieve the closest prior program graph, and adapt it by gradient toward the new acceptance criteria — bypassing the extraction front-end entirely. This path requires:
+1. Embeddings that cluster reliably by intent (Spec 35).
+2. MLP-refined embeddings that are more intent-sensitive than raw ones (Spec 04).
+3. A gradient-based graph adaptation mechanism (not yet specced — depends on Spec 04 results).
+
+Spec 21 (direct graph extraction) is the near-term answer to extraction reliability. Spec 04 is the longer-horizon answer that removes the need for extraction altogether.
 
 ## Motivation
 

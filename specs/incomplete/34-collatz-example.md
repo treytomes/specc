@@ -1,7 +1,21 @@
 # Spec 34 — Collatz Example (Unbounded Loop)
 
 **Status:** Incomplete
-**Depends on:** Spec 33 (Calculator — multiple inputs) or Spec 32 (Guesser — int input)
+**Depends on:** Spec 32 (Guesser — int input, comparison branching); Spec 33 recommended but not strictly required
+**Blocks:** Spec 35 (geometry validation needs program variety); decision gate for Spec 21 vs Spec 04
+
+## Blockers to implement before this spec
+
+- Everything in Spec 32 (int `InputNode`)
+- `WhileLoopNode` (or generalized `LoopNode` with condition expression) in `Nodes.cs`
+- `while:` spec keyword and parser in `SemanticGraphPass`
+- `CfgPass` lowering for `WhileLoopNode`: `loop_top → test → brtrue exit → body → br loop_top`
+- `assign: op: div` — integer division — in `SemanticGraphPass`, `StackIrPass` (`div` opcode), `MsilGenerationPass`, `AssemblyEmitPass`
+- `AcceptanceCriteriaPass` must handle programs with a `WhileLoopNode` (cannot derive expected output statically — defer to authorial assertions only, same pattern as array programs)
+
+## Extraction cliff note
+
+This spec is designed to test and record where ministral-3b fails. If the model cannot reliably produce `while:` + nested conditional assigns + `op: div` from prose, document the exact failure mode. That failure is the trigger for prioritizing Spec 21.
 
 ## What this example is
 

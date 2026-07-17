@@ -2,6 +2,14 @@
 
 **Status:** Incomplete
 **Depends on:** Spec 32 (Guesser — int input, comparison branching)
+**Blocks:** Spec 34 (Collatz)
+
+## Blockers to implement before this spec
+
+- Everything in Spec 32 (int `InputNode`, comparison branching)
+- `CompilationContext.TestInput` extended to support multiple lines (newline-joined string or `string[]`) — `AcceptanceVerificationPass` must write all lines to stdin before the process reads
+- `LowerLinear` in `CfgPass` must handle multiple `InputNode`s without collision in local index assignment
+- Verify `StackIrPass` string-variable tracking doesn't confuse two separate `StlocStr` names
 
 ## What this example is
 

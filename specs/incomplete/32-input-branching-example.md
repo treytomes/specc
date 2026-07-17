@@ -2,6 +2,15 @@
 
 **Status:** Incomplete
 **Depends on:** Spec 29 (Greetings — string I/O, linear programs) ✓
+**Blocks:** Spec 33 (Calculator), Spec 34 (Collatz)
+
+## Blockers to implement before this spec
+
+- `type: int, source: stdin` in `SemanticGraphPass` — emit `InputNode` with integer type, lower to `ReadLine` + `int.Parse` + `StlocS`
+- `compare: lt | gt | eq` and `value:` fields on `branch:` in `SemanticGraphPass`
+- `CfgPass` pattern for comparison-based branches (no `ModuloNode`, uses `ComparisonNode` instead)
+- `StackIrPass` patterns for `clt`, `cgt`, `ceq` against a fixed integer value
+- `AcceptanceVerificationPass` — `TestInput` already pipes one line; int input reuses this path
 
 ## What this example is
 

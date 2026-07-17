@@ -1,7 +1,14 @@
 # Spec 35 — Embedding Geometry Validation
 
 **Status:** Incomplete
-**Depends on:** Spec 03 (graph repository) ✓, Spec 34 (Collatz — enough program variety)
+**Depends on:** Spec 03 (graph repository) ✓; at least Specs 32–34 compiled (for program variety)
+**Blocks:** Spec 04 (differentiable node MLPs — needs geometry baseline to validate premise)
+
+## Blockers to implement before this spec
+
+None beyond having enough compiled programs in the repository. The eight existing examples (FizzBuzz family, sorting, Fibonacci, Multiples, Greetings) are sufficient to run a preliminary measurement. The full measurement is more meaningful after Specs 32–34 add programs with different structural shapes.
+
+This spec is a script, not a compiler pass. No changes to the pipeline are required.
 
 ## What this spec is
 

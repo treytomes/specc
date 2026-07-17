@@ -35,6 +35,8 @@ Before implementing learned node refinement (Spec 04), validate the premise with
 
 Spec 35 produces a baseline. Spec 04 is only worth building if the baseline shows that the raw embeddings are program-intent-sensitive (i.e., the clusters exist even before refinement). If they don't, the embedding architecture needs to be revisited before training.
 
+**Spec 04 does not improve extraction reliability.** Its value is longer-horizon: once embeddings cluster reliably by intent, it enables program synthesis by analogy — embed a prose description, retrieve the closest prior graph, adapt it by gradient toward the new acceptance criteria. That path bypasses the extraction front-end entirely. But it requires Spec 35 first, and a gradient-based graph adaptation mechanism that is not yet specced.
+
 ---
 
 ## Phase 3 — Turing-completeness and self-hosting
@@ -50,12 +52,19 @@ Self-hosting is not a near-term deliverable. It is a horizon that shapes decisio
 
 ## The extraction cliff and Spec 21
 
-Spec 21 (direct graph extraction) replaces the two-step Markdown → `.spec` → graph path with a single structured LLM call that produces the graph JSON directly. It was explored once and blocked on speed (13× slower) and structural reliability. Both issues have mitigations:
+Every new construct added to the spec format grows the LLM system prompt and reduces extraction reliability. The `.spec` text format has a ceiling: ministral-3b's ability to correctly apply all available constructs degrades as the prompt grows. We have already seen it invent syntax (`default_output:`) and ignore rules.
 
-- **Speed:** constrained decoding via `ChatOptions.ResponseFormat` (Spec 22, now complete) reduces wasted tokens and retries.
-- **Reliability:** a grammar-constrained JSON schema prevents structurally invalid graph topology.
+Spec 21 replaces the two-step Markdown → `.spec` → graph path with a single structured LLM call that produces the graph JSON directly, constrained by a JSON Schema. This removes the ceiling — the model cannot produce structurally invalid graph topology, and the grammar constraint tends to reduce token waste and retries.
 
-Spec 21 becomes the priority inflection point: if Phase 1 confirms the extraction cliff is at or before Collatz, Spec 21 moves ahead of Spec 04. The cliff tells us the extraction front-end is the bottleneck, not the graph representation. If the cliff is beyond Collatz (the model handles unbounded loops reliably), Spec 04 moves ahead — the representation is the next thing to improve.
+It was attempted once and blocked on two issues, both now mitigated:
+- **Speed:** 13× slower than `.spec` extraction because of token volume. Mitigated by `ChatOptions.ResponseFormat` (Spec 22, complete) which constrains sampling and reduces wasted output.
+- **Reliability:** the model produced structurally valid but pipeline-incompatible topology (e.g. a `Comparison` node instead of a `Modulo` node for a divisibility check). Mitigated by a grammar-constrained JSON schema that enumerates valid `kind` discriminator values and required fields per node type.
+
+**What Spec 21 enables:** once the LLM produces the graph directly, the extraction front-end scales with the graph type system, not with a growing spec format. Adding `WhileLoopNode` means adding one entry to the schema and one example in the prompt — not a new spec keyword, a new parser branch, and a new system prompt rule.
+
+**What Spec 21 does not do:** it does not improve the quality of the graph once produced. `SemanticNormalizationPass` still validates nodes against the reference corpus. The graph can still be wrong — it just can't be structurally malformed.
+
+Spec 21 is the near-term answer to extraction reliability. Spec 04 is the longer-horizon answer that eventually removes the need for extraction altogether.
 
 ---
 
