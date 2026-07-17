@@ -36,7 +36,7 @@ public class AcceptanceVerificationPass : ICompilerPass
             ?? throw new InvalidOperationException("No launcher or assembly to verify");
 
         var sw     = Stopwatch.StartNew();
-        var stdout = await RunAsync(launcher, context.AssemblyPath);
+        var stdout = await RunAsync(launcher, context.AssemblyPath, context.TestInput);
         var lines  = stdout.Split('\n', StringSplitOptions.RemoveEmptyEntries);
 
         if (lines.Length != assertions.Count)
@@ -48,7 +48,10 @@ public class AcceptanceVerificationPass : ICompilerPass
         {
             var assertion = assertions[i];
             var actual    = lines[i].TrimEnd('\r');
-            if (actual != assertion.Expected)
+            var passed = assertion.IsSubstring
+                ? actual.Contains(assertion.Expected, StringComparison.OrdinalIgnoreCase)
+                : actual == assertion.Expected;
+            if (!passed)
                 failures.Add(new AcceptanceFailure(assertion.Iteration, assertion.Expected, actual));
         }
 
@@ -64,7 +67,7 @@ public class AcceptanceVerificationPass : ICompilerPass
         !OperatingSystem.IsWindows() &&
         (File.GetUnixFileMode(path) & UnixFileMode.UserExecute) != 0;
 
-    private static async Task<string> RunAsync(string launcher, string? assemblyPath)
+    private static async Task<string> RunAsync(string launcher, string? assemblyPath, string? testInput)
     {
         ProcessStartInfo psi;
 
@@ -74,6 +77,7 @@ public class AcceptanceVerificationPass : ICompilerPass
             {
                 RedirectStandardOutput = true,
                 RedirectStandardError  = true,
+                RedirectStandardInput  = testInput != null,
                 UseShellExecute        = false,
             };
         }
@@ -83,6 +87,7 @@ public class AcceptanceVerificationPass : ICompilerPass
             {
                 RedirectStandardOutput = true,
                 RedirectStandardError  = true,
+                RedirectStandardInput  = testInput != null,
                 UseShellExecute        = false,
             };
         }
@@ -93,6 +98,12 @@ public class AcceptanceVerificationPass : ICompilerPass
 
         using var process = Process.Start(psi)
             ?? throw new InvalidOperationException("Failed to start process");
+
+        if (testInput != null)
+        {
+            await process.StandardInput.WriteLineAsync(testInput);
+            process.StandardInput.Close();
+        }
 
         var stdout = await process.StandardOutput.ReadToEndAsync();
         await process.WaitForExitAsync();

@@ -44,6 +44,7 @@ public class SemanticNormalizationPass : ICompilerPass
         ("NestedLoop",  "An inner loop whose upper bound depends on an outer loop variable."),
         ("Arithmetic",  "A binary arithmetic operation: multiply, add, or subtract."),
         ("Assign",      "Assign the result of an arithmetic operation to a variable."),
+        ("Input",       "Read a string value from standard input into a named variable."),
     ];
 
     private readonly IEmbeddingGenerator<string, Embedding<float>> _embedder;
@@ -104,9 +105,9 @@ public class SemanticNormalizationPass : ICompilerPass
         {
             var node = graph.Nodes[i];
 
-            // AssertionNodes are metadata; ArithmeticNode/AssignNode are exact-typed from the parsed spec.
+            // AssertionNodes are metadata; ArithmeticNode/AssignNode/InputNode are exact-typed from the parsed spec.
             // None of these need similarity-based validation.
-            if (node is AssertionNode or ArithmeticNode or AssignNode) continue;
+            if (node is AssertionNode or ArithmeticNode or AssignNode or InputNode) continue;
 
             if (!embeddingMap.TryGetValue(node.Id, out var embedding))
             {
@@ -198,6 +199,7 @@ public class SemanticNormalizationPass : ICompilerPass
         NestedLoopNode => "NestedLoop",
         ArithmeticNode => "Arithmetic",
         AssignNode     => "Assign",
+        InputNode      => "Input",
         _              => "Unknown",
     };
 
@@ -242,6 +244,7 @@ public class SemanticNormalizationPass : ICompilerPass
         AssignNode an     => an.Op == "copy"
             ? $"Assign:{an.Target}=copy({an.Left})"
             : $"Assign:{an.Target}={an.Op}({an.Left},{an.Right})",
+        InputNode inp     => $"Input:{inp.Name}",
         _                 => node.Label,
     };
 

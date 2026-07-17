@@ -49,19 +49,60 @@ public class SemanticGraphPass : ICompilerPass
         int? pendingBranchDivisor = null;
         BranchNode? lastBranch = null;
 
+        // Inline stdin-variable state — parsed and connected in spec order so that
+        // Contains edges on the ProgramNode reflect the authorial sequence.
+        bool inInlineVar = false;
+        string? inlineVarName = null, inlineVarType = null, inlineVarSource = null;
+
+        void FlushInlineVar()
+        {
+            if (inlineVarName == null || inlineVarSource == null) return;
+            if (inlineVarSource.Equals("stdin", StringComparison.OrdinalIgnoreCase))
+            {
+                var inp = new InputNode(Guid.NewGuid(), $"Input:{inlineVarName}", inlineVarName);
+                graph.Add(inp);
+                if (program != null) graph.Connect(program.Id, inp.Id, EdgeType.Contains);
+            }
+            inlineVarName = null; inlineVarType = null; inlineVarSource = null;
+        }
+
         foreach (var line in lines)
         {
             if (line.StartsWith("program:"))
             {
+                FlushInlineVar(); inInlineVar = false;
                 var name = line["program:".Length..].Trim();
                 program = new ProgramNode(Guid.NewGuid(), $"Program:{name}", name);
                 graph.Add(program);
             }
             else if (line.StartsWith("branch:"))
             {
+                FlushInlineVar(); inInlineVar = false;
                 pendingBranchCondition = null;
                 pendingBranchDivisor = null;
                 lastBranch = null;
+            }
+            else if (line == "variable:")
+            {
+                FlushInlineVar();
+                inInlineVar = true;
+            }
+            else if (inInlineVar && line.StartsWith("name:"))
+            {
+                inlineVarName = line["name:".Length..].Trim();
+            }
+            else if (inInlineVar && line.StartsWith("type:"))
+            {
+                inlineVarType = line["type:".Length..].Trim();
+            }
+            else if (inInlineVar && line.StartsWith("source:"))
+            {
+                inlineVarSource = line["source:".Length..].Trim();
+            }
+            else if (inInlineVar && (line.StartsWith("print:") || line.StartsWith("assign:") || line.StartsWith("loop:")))
+            {
+                FlushInlineVar(); inInlineVar = false;
+                // fall through to handle the line below
             }
             else if (line.StartsWith("condition:"))
             {
@@ -72,6 +113,14 @@ public class SemanticGraphPass : ICompilerPass
                 if (int.TryParse(line["divisor:".Length..].Trim(), out var d) && d > 0)
                     pendingBranchDivisor = d;
                 // divisor: 0 or non-integer — LLM placeholder for array programs; ignore.
+            }
+
+            if (line.StartsWith("print:") && !line.StartsWith("program:"))
+            {
+                var template = line["print:".Length..].Trim().Trim('"');
+                var printNode = new PrintNode(Guid.NewGuid(), $"Print:{template}", template);
+                graph.Add(printNode);
+                if (program != null) graph.Connect(program.Id, printNode.Id, EdgeType.Contains);
             }
             else if (line.StartsWith("true_output:"))
             {
@@ -96,6 +145,8 @@ public class SemanticGraphPass : ICompilerPass
                     graph.Connect(program.Id, lastBranch.Id, EdgeType.Contains);
             }
         }
+
+        FlushInlineVar(); // flush trailing stdin variable if at end of spec
 
         BuildLoopNode(lines, graph, program);
         BuildVariableNode(lines, graph, program);
@@ -122,10 +173,15 @@ public class SemanticGraphPass : ICompilerPass
             }
         }
 
-        // Warn about absent structural sections
-        if (!graph.Nodes.OfType<LoopNode>().Any())
+        // Warn about absent structural sections — but linear programs (direct print: or stdin input)
+        // legitimately have no loop.
+        var hasDirectPrint = program != null && graph.Edges
+            .Any(e => e.From == program.Id && e.Type == EdgeType.Contains
+                      && graph.Nodes.OfType<PrintNode>().Any(p => p.Id == e.To));
+        var hasInput = graph.Nodes.OfType<InputNode>().Any();
+        if (!graph.Nodes.OfType<LoopNode>().Any() && !hasDirectPrint && !hasInput)
             _logger.LogWarning("No loop: section found in spec — graph may be incomplete");
-        if (!graph.Nodes.OfType<VariableNode>().Any())
+        if (!graph.Nodes.OfType<VariableNode>().Any() && !graph.Nodes.OfType<InputNode>().Any())
             _logger.LogWarning("No variable: section found in spec — graph may be incomplete");
 
         var kindSummary = graph.Nodes
@@ -244,13 +300,23 @@ public class SemanticGraphPass : ICompilerPass
     private static void BuildVariableNode(string[] lines, SemanticGraph graph, ProgramNode? program)
     {
         bool inVar = false;
-        string? name = null, type = null, initialValue = null;
+        string? name = null, type = null, initialValue = null, source = null;
 
         void FlushVar()
         {
             if (name == null || type == null) return;
-            EmitVariable(graph, program, name, type, initialValue);
-            name = null; type = null; initialValue = null;
+            if (source?.Equals("stdin", StringComparison.OrdinalIgnoreCase) == true)
+            {
+                // Input variable: represents a Console.ReadLine() into a named string local.
+                var input = new InputNode(Guid.NewGuid(), $"Input:{name}", name);
+                graph.Add(input);
+                if (program != null) graph.Connect(program.Id, input.Id, EdgeType.Contains);
+            }
+            else
+            {
+                EmitVariable(graph, program, name, type, initialValue);
+            }
+            name = null; type = null; initialValue = null; source = null;
         }
 
         foreach (var line in lines)
@@ -260,6 +326,7 @@ public class SemanticGraphPass : ICompilerPass
             if (line.StartsWith("name:"))          { name         = line["name:".Length..].Trim();          continue; }
             if (line.StartsWith("type:"))          { type         = line["type:".Length..].Trim();          continue; }
             if (line.StartsWith("initial_value:")) { initialValue = line["initial_value:".Length..].Trim(); continue; }
+            if (line.StartsWith("source:"))        { source       = line["source:".Length..].Trim();        continue; }
 
             // Flush on any non-variable keyword
             if (line.StartsWith("branch:") || line.StartsWith("loop:") || line.StartsWith("program:") || line.StartsWith("assign:"))

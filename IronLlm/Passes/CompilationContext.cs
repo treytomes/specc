@@ -23,6 +23,9 @@ public class CompilationContext
     public string? MsilOutput    { get; set; }
     public string? AssemblyPath  { get; set; }
     public string? LauncherPath  { get; set; }
+    // Fixed stdin input piped to the process during acceptance verification.
+    // Used for interactive programs (e.g. Greetings) where output depends on user input.
+    public string? TestInput     { get; set; }
 
     public string RepositoryPath { get; set; } = "repository";
     public List<SimilarPrior> SimilarPriors { get; set; } = [];

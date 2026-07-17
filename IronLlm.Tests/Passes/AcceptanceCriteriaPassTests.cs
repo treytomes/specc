@@ -124,15 +124,16 @@ public class AcceptanceCriteriaPassTests
     }
 
     [Fact]
-    public async Task Execute_Throws_WhenNoLoopNode()
+    public async Task Execute_SetsEmptyAssertions_WhenLinearProgram()
     {
-        // A graph with no ArrayNode and no LoopNode must throw.
+        // A graph with no ArrayNode and no LoopNode is a linear program — no exception,
+        // empty assertions (authorial criteria take over).
         var ctx = PipelineFixtures.MakeContext();
         var g   = new SemanticGraph();
-        // Add a ProgramNode so the graph isn't completely empty
         g.Add(new ProgramNode(Guid.NewGuid(), "Program:Test", "Test"));
         ctx.SemanticGraph = g;
-        await Assert.ThrowsAnyAsync<Exception>(() => MakePass().ExecuteAsync(ctx));
+        await MakePass().ExecuteAsync(ctx);
+        Assert.Empty(ctx.Assertions);
     }
 
     [Fact]

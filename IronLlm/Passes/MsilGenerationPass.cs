@@ -35,10 +35,12 @@ public class MsilGenerationPass : ICompilerPass
             ?? "Program";
 
         // ── Collect locals in first-appearance order ──────────────────────────
-        // Array locals (LdlocA/StlocA operands) and scalar locals (LdlocS/StlocS operands).
-        // We keep insertion order so the IL index matches declaration order.
-        var localOrder  = new List<string>();    // name → index via position
-        var arrayLocals = new HashSet<string>(); // names that are int[] type
+        // Array locals (LdlocA/StlocA), string locals (LdlocStr/StlocStr), and
+        // scalar int locals (LdlocS/StlocS). We keep insertion order so the IL
+        // index matches declaration order.
+        var localOrder   = new List<string>();    // name → index via position
+        var arrayLocals  = new HashSet<string>(); // names that are int[] type
+        var stringLocals = new HashSet<string>(); // names that are string type
 
         foreach (var instr in context.StackIr)
         {
@@ -54,6 +56,15 @@ public class MsilGenerationPass : ICompilerPass
                     if (instr.Operand != null)
                     {
                         arrayLocals.Add(instr.Operand);
+                        if (!localOrder.Contains(instr.Operand))
+                            localOrder.Add(instr.Operand);
+                    }
+                    break;
+                case OpCode.LdlocStr:
+                case OpCode.StlocStr:
+                    if (instr.Operand != null)
+                    {
+                        stringLocals.Add(instr.Operand);
                         if (!localOrder.Contains(instr.Operand))
                             localOrder.Add(instr.Operand);
                     }
@@ -77,7 +88,7 @@ public class MsilGenerationPass : ICompilerPass
         else if (localOrder.Count == 1)
         {
             var name = localOrder[0];
-            var type = arrayLocals.Contains(name) ? "int32[]" : "int32";
+            var type = LocalType(name, arrayLocals, stringLocals);
             sb.AppendLine($"    .locals init ({type} V_0)");
         }
         else
@@ -86,7 +97,7 @@ public class MsilGenerationPass : ICompilerPass
             for (var i = 0; i < localOrder.Count; i++)
             {
                 var name    = localOrder[i];
-                var type    = arrayLocals.Contains(name) ? "int32[]" : "int32";
+                var type    = LocalType(name, arrayLocals, stringLocals);
                 var comma   = i < localOrder.Count - 1 ? "," : "";
                 sb.AppendLine($"        {type} V_{i}{comma}");
             }
@@ -105,6 +116,16 @@ public class MsilGenerationPass : ICompilerPass
                 line = $"    ldloc.{idx}";
             }
             else if (instr.Op == OpCode.StlocS || instr.Op == OpCode.StlocA)
+            {
+                var idx = localOrder.IndexOf(instr.Operand!);
+                line = $"    stloc.{idx}";
+            }
+            else if (instr.Op == OpCode.LdlocStr)
+            {
+                var idx = localOrder.IndexOf(instr.Operand!);
+                line = $"    ldloc.{idx}";
+            }
+            else if (instr.Op == OpCode.StlocStr)
             {
                 var idx = localOrder.IndexOf(instr.Operand!);
                 line = $"    stloc.{idx}";
@@ -128,6 +149,8 @@ public class MsilGenerationPass : ICompilerPass
                     OpCode.Brtrue   => $"    brtrue {instr.Operand}",
                     OpCode.Br       => $"    br {instr.Operand}",
                     OpCode.LdstrS   => $"    ldstr \"{instr.Operand}\"",
+                    OpCode.ReadLine => $"    call string [mscorlib]System.Console::ReadLine()",
+                    OpCode.Concat   => $"    call string [mscorlib]System.String::Concat(string, string)",
                     OpCode.Call when instr.Operand!.Contains("string")
                                     => $"    call void [mscorlib]System.Console::WriteLine(string)",
                     OpCode.Call     => $"    call void [mscorlib]System.Console::WriteLine(int32)",
@@ -148,5 +171,12 @@ public class MsilGenerationPass : ICompilerPass
             lineCount, localOrder.Count);
         _logger.LogInformation("Pass {Name} completed in {ElapsedMs}ms", Name, sw.ElapsedMilliseconds);
         return Task.CompletedTask;
+    }
+
+    private static string LocalType(string name, HashSet<string> arrayLocals, HashSet<string> stringLocals)
+    {
+        if (arrayLocals.Contains(name))  return "int32[]";
+        if (stringLocals.Contains(name)) return "string";
+        return "int32";
     }
 }

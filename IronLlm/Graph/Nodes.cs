@@ -18,6 +18,7 @@ namespace IronLlm.Graph;
 [JsonDerivedType(typeof(NestedLoopNode), "NestedLoop")]
 [JsonDerivedType(typeof(ArithmeticNode), "Arithmetic")]
 [JsonDerivedType(typeof(AssignNode),     "Assign")]
+[JsonDerivedType(typeof(InputNode),      "Input")]
 public abstract record Node(Guid Id, string Label);
 
 public record ProgramNode(Guid Id, string Label, string Name) : Node(Id, Label);
@@ -48,3 +49,6 @@ public record ArithmeticNode(Guid Id, string Label, string Op) : Node(Id, Label)
 // left/right: variable name wrapped in {}, or a bare integer literal; right is null for op: copy
 public record AssignNode(Guid Id, string Label, string Target, string Op, string Left, string? Right = null)
     : Node(Id, Label);
+
+// Reads a line from stdin into a named string variable.
+public record InputNode(Guid Id, string Label, string Name) : Node(Id, Label);

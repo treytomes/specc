@@ -32,6 +32,17 @@ public class AcceptanceCriteriaPass : ICompilerPass
 
         // Array programs require running the sort to determine expected output — graph-derived
         // assertions cannot be computed statically.
+        // Linear programs (no loop, no array) use authorial assertions only.
+        var hasLoop = graph.Nodes.OfType<LoopNode>().Any();
+        if (!hasLoop && !graph.Nodes.OfType<ArrayNode>().Any())
+        {
+            context.Assertions = [];
+            _logger.LogInformation(
+                "Linear program detected — skipping graph-derived assertions ({Authorial} authorial assertion(s) available)",
+                context.AuthorialAssertions.Count);
+            return Task.CompletedTask;
+        }
+
         var arrayNode = graph.Nodes.OfType<ArrayNode>().FirstOrDefault();
         if (arrayNode != null)
         {

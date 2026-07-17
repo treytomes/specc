@@ -158,7 +158,7 @@ public class StackIrPassTests
         var method = typeof(IronLlm.Passes.StackIrPass)
             .GetMethod("LowerInstruction",
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
-        return (IEnumerable<StackInstruction>)method.Invoke(null, [instr])!;
+        return (IEnumerable<StackInstruction>)method.Invoke(null, [instr, null])!;
     }
 
     [Fact]

@@ -40,6 +40,8 @@ public class CfgPass : ICompilerPass
         List<CfgBlock> blocks;
 
         var arrayNode = graph.Nodes.OfType<ArrayNode>().FirstOrDefault();
+        var hasLoop   = graph.Nodes.OfType<LoopNode>().Any();
+
         if (arrayNode != null)
         {
             var hasMinIndex = graph.Nodes.OfType<VariableNode>()
@@ -47,6 +49,10 @@ public class CfgPass : ICompilerPass
             blocks = hasMinIndex
                 ? LowerSelectionSort(graph, arrayNode)
                 : LowerBubbleSort(graph, arrayNode);
+        }
+        else if (!hasLoop)
+        {
+            blocks = LowerLinear(graph);
         }
         else
         {
@@ -223,6 +229,66 @@ public class CfgPass : ICompilerPass
         blocks.Add(new("exit",     [],                               null,        null));
 
         return blocks;
+    }
+
+    private static List<CfgBlock> LowerLinear(IronLlm.Graph.SemanticGraph graph)
+    {
+        // Collect PrintNodes and InputNodes in the order they appear as Contains edges
+        // from the ProgramNode. Edges are added in spec-parse order so this preserves
+        // the authorial sequence.
+        var program = graph.Nodes.OfType<ProgramNode>().FirstOrDefault();
+        var orderedIds = program != null
+            ? graph.Edges
+                .Where(e => e.From == program.Id && e.Type == EdgeType.Contains)
+                .Select(e => e.To)
+                .ToList()
+            : [];
+
+        var nodeIndex = graph.Nodes.ToDictionary(n => n.Id);
+        var instructions = new List<string>();
+
+        foreach (var id in orderedIds)
+        {
+            if (!nodeIndex.TryGetValue(id, out var node)) continue;
+            switch (node)
+            {
+                case PrintNode p:
+                    // Template is a literal string, a bare {varName}, or a mixed string like
+                    // "Hello, {name}". For mixed templates, split into a literal print followed
+                    // by a variable print so StackIrPass can lower each independently.
+                    var template = p.Template;
+                    var varMatch = System.Text.RegularExpressions.Regex.Match(template, @"\{(\w+)\}");
+                    if (!varMatch.Success)
+                    {
+                        instructions.Add($"print \"{template}\"");
+                    }
+                    else if (template.StartsWith('{') && template.EndsWith('}') && template.Length == varMatch.Length)
+                    {
+                        // Pure variable reference: {user_name}
+                        instructions.Add($"print {varMatch.Groups[1].Value}");
+                    }
+                    else
+                    {
+                        // Mixed literal+variable template: "Nice to meet you, {name}"
+                        // Emit as: print_concat "prefix" varName "suffix"
+                        // (suffix is usually empty; StackIrPass handles the concat+println)
+                        var prefix = template[..varMatch.Index];
+                        var varName = varMatch.Groups[1].Value;
+                        var suffix = template[(varMatch.Index + varMatch.Length)..];
+                        instructions.Add($"print_concat \"{prefix}\" {varName} \"{suffix}\"");
+                    }
+                    break;
+                case InputNode inp:
+                    instructions.Add($"read {inp.Name}");
+                    break;
+            }
+        }
+
+        return
+        [
+            new("entry", instructions, "exit", null),
+            new("exit",  [],           null,   null),
+        ];
     }
 
     private static List<CfgBlock> LowerSelectionSort(IronLlm.Graph.SemanticGraph graph, ArrayNode arr)

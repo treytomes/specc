@@ -23,6 +23,10 @@ public enum OpCode
     StlocA,    // store array local; operand = array name
     LdelemI4,  // load int element from array (pops arr ref and index, pushes int)
     StelemI4,  // store int element into array (pops arr ref, index, value)
+    ReadLine,  // call Console.ReadLine(), push string result
+    LdlocStr,  // load string local; operand = variable name
+    StlocStr,  // store string local; operand = variable name
+    Concat,    // call string.Concat(string, string); pops two strings, pushes concatenated string
 }
 
 public record StackInstruction(OpCode Op, string? Operand = null);

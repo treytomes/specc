@@ -56,8 +56,9 @@ public class AssemblyEmitPass : ICompilerPass
         var il = methBuilder.GetILGenerator();
 
         // ── Collect locals in first-appearance order (same logic as MsilGenerationPass) ──
-        var localOrder  = new List<string>();
-        var arrayLocals = new HashSet<string>();
+        var localOrder   = new List<string>();
+        var arrayLocals  = new HashSet<string>();
+        var stringLocals = new HashSet<string>();
 
         foreach (var instr in context.StackIr)
         {
@@ -77,6 +78,15 @@ public class AssemblyEmitPass : ICompilerPass
                             localOrder.Add(instr.Operand);
                     }
                     break;
+                case IrOp.LdlocStr:
+                case IrOp.StlocStr:
+                    if (instr.Operand != null)
+                    {
+                        stringLocals.Add(instr.Operand);
+                        if (!localOrder.Contains(instr.Operand))
+                            localOrder.Add(instr.Operand);
+                    }
+                    break;
             }
         }
 
@@ -84,7 +94,9 @@ public class AssemblyEmitPass : ICompilerPass
         var localBuilders = new Dictionary<string, LocalBuilder>();
         foreach (var name in localOrder)
         {
-            var type = arrayLocals.Contains(name) ? typeof(int[]) : typeof(int);
+            Type type = arrayLocals.Contains(name)  ? typeof(int[])
+                      : stringLocals.Contains(name) ? typeof(string)
+                      : typeof(int);
             localBuilders[name] = il.DeclareLocal(type);
         }
 
@@ -118,6 +130,20 @@ public class AssemblyEmitPass : ICompilerPass
                     break;
                 case IrOp.StlocA:
                     il.Emit(OpCodes.Stloc, localBuilders[instr.Operand!]);
+                    break;
+                case IrOp.LdlocStr:
+                    il.Emit(OpCodes.Ldloc, localBuilders[instr.Operand!]);
+                    break;
+                case IrOp.StlocStr:
+                    il.Emit(OpCodes.Stloc, localBuilders[instr.Operand!]);
+                    break;
+                case IrOp.ReadLine:
+                    var readLine = typeof(Console).GetMethod("ReadLine", Type.EmptyTypes)!;
+                    il.EmitCall(OpCodes.Call, readLine, null);
+                    break;
+                case IrOp.Concat:
+                    var concat = typeof(string).GetMethod("Concat", [typeof(string), typeof(string)])!;
+                    il.EmitCall(OpCodes.Call, concat, null);
                     break;
                 case IrOp.Add:
                     il.Emit(OpCodes.Add);

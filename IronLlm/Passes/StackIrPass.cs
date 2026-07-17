@@ -40,9 +40,18 @@ public class StackIrPass : ICompilerPass
             ir.Add(new StackInstruction(OpCode.Label, block.Label));
 
             var blockOps = new List<StackInstruction>();
+            // Track string variable names so print can emit the right Call overload.
+            var stringVars = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var prevInstr in ir)
+                if (prevInstr.Op == OpCode.StlocStr && prevInstr.Operand != null)
+                    stringVars.Add(prevInstr.Operand);
             foreach (var instr in block.Instructions)
             {
-                var lowered = LowerInstruction(instr).ToList();
+                var lowered = LowerInstruction(instr, stringVars).ToList();
+                // Update stringVars with any new StlocStr emitted in this block.
+                foreach (var si in lowered)
+                    if (si.Op == OpCode.StlocStr && si.Operand != null)
+                        stringVars.Add(si.Operand);
                 if (lowered.Count == 0 && !string.IsNullOrWhiteSpace(instr))
                     _logger.LogWarning(
                         "StackIR: unrecognised instruction pattern in block {Block}: \"{Instruction}\"",
@@ -82,7 +91,7 @@ public class StackIrPass : ICompilerPass
 
     // Maps deterministic CFG instruction strings to stack ops.
     // CfgPass emits exact patterns; we match them precisely and extract values via regex.
-    private static IEnumerable<StackInstruction> LowerInstruction(string instr)
+    private static IEnumerable<StackInstruction> LowerInstruction(string instr, HashSet<string>? stringVars = null)
     {
         var s = instr.Trim();
 
@@ -281,12 +290,21 @@ public class StackIrPass : ICompilerPass
             yield break;
         }
 
-        // "print {var}" — print integer variable (no quotes, ends with identifier)
+        // "print {var}" — print a variable; string or int depending on type
         var printVarMatch = Regex.Match(s, @"^print\s+(\w+)$");
         if (printVarMatch.Success)
         {
-            yield return new(OpCode.LdlocS, printVarMatch.Groups[1].Value);
-            yield return new(OpCode.Call,   "Console.WriteLine(int)");
+            var varName = printVarMatch.Groups[1].Value;
+            if (stringVars?.Contains(varName) == true)
+            {
+                yield return new(OpCode.LdlocStr, varName);
+                yield return new(OpCode.Call,     "Console.WriteLine(string)");
+            }
+            else
+            {
+                yield return new(OpCode.LdlocS, varName);
+                yield return new(OpCode.Call,   "Console.WriteLine(int)");
+            }
             yield break;
         }
 
@@ -296,6 +314,27 @@ public class StackIrPass : ICompilerPass
         {
             yield return new(OpCode.LdstrS, printStrMatch.Groups[1].Value);
             yield return new(OpCode.Call,   "Console.WriteLine(string)");
+            yield break;
+        }
+
+        // `print_concat "prefix" varName "suffix"` — concat a literal prefix with a string
+        // variable (and optional suffix), then println the result.
+        // Suffix may be empty (""), in which case we skip the second concat.
+        var printConcatMatch = Regex.Match(s, @"^print_concat\s+""(.*)""\s+(\w+)\s+""(.*)""$");
+        if (printConcatMatch.Success)
+        {
+            var prefix  = printConcatMatch.Groups[1].Value;
+            var varName = printConcatMatch.Groups[2].Value;
+            var suffix  = printConcatMatch.Groups[3].Value;
+            yield return new(OpCode.LdstrS,  prefix);
+            yield return new(OpCode.LdlocStr, varName);
+            yield return new(OpCode.Concat);
+            if (!string.IsNullOrEmpty(suffix))
+            {
+                yield return new(OpCode.LdstrS, suffix);
+                yield return new(OpCode.Concat);
+            }
+            yield return new(OpCode.Call, "Console.WriteLine(string)");
             yield break;
         }
 
@@ -309,6 +348,19 @@ public class StackIrPass : ICompilerPass
             yield return new(OpCode.StlocS, incrMatch.Groups[1].Value);
             yield break;
         }
+
+        // "read {var}" — Console.ReadLine() → store in named string local
+        var readMatch = Regex.Match(s, @"^read\s+(\w+)$");
+        if (readMatch.Success)
+        {
+            yield return new(OpCode.ReadLine);
+            yield return new(OpCode.StlocStr, readMatch.Groups[1].Value);
+            yield break;
+        }
+
+        // "print {var}" where the variable is a string local — detected by StlocStr history;
+        // handled identically to int print at this level; MsilGenerationPass distinguishes by type.
+        // (No change needed here — the existing printVarMatch handles it; type is resolved downstream.)
 
         // "assign {target} copy {left}" — variable copy (no right operand)
         var assignCopyMatch = Regex.Match(s, @"^assign\s+(\w+)\s+copy\s+(\{?\w+\}?)$");

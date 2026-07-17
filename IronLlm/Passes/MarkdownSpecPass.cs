@@ -49,12 +49,34 @@ public class MarkdownSpecPass : ICompilerPass
 
         // Try to extract expected output directly from a fenced code block under
         // "## Expected Output" — deterministic, no LLM needed, works for array programs.
+        // Set test input for interactive programs.
+        var testInput = ParseTestInputBlock(markdown);
+        if (testInput != null)
+        {
+            context.TestInput = testInput;
+            _logger.LogInformation("Parsed test input from Markdown: \"{Input}\"", testInput);
+        }
+
         var directLines = ParseExpectedOutputBlock(markdown);
         List<AssertionRecord> authorial;
         if (directLines.Count > 0)
         {
             authorial = directLines
-                .Select((line, i) => new AssertionRecord(i, line))
+                .Select((line, i) =>
+                {
+                    // Lines containing {variable} placeholders are dynamic.
+                    // If we have a TestInput value, substitute it for all {placeholder}s and use exact matching.
+                    // Otherwise fall back to substring matching on whatever static text surrounds the placeholder.
+                    if (line.Contains('{') && line.Contains('}'))
+                    {
+                        var resolved = testInput != null
+                            ? System.Text.RegularExpressions.Regex.Replace(line, @"\{[^}]+\}", testInput)
+                            : line;
+                        var isSubstring = testInput == null;
+                        return new AssertionRecord(i, resolved, IsSubstring: isSubstring);
+                    }
+                    return new AssertionRecord(i, line);
+                })
                 .ToList();
             _logger.LogInformation("Parsed {Count} expected output lines directly from Markdown", authorial.Count);
         }
@@ -73,6 +95,12 @@ public class MarkdownSpecPass : ICompilerPass
                 JsonSerializer.Serialize(authorial, new JsonSerializerOptions { WriteIndented = true }));
             _logger.LogInformation("Extracted {Count} authorial assertions → {Path}",
                 authorial.Count, criteriaPath);
+        }
+
+        if (testInput != null)
+        {
+            var testInputPath = Path.Combine(context.ArtifactsDir, "00-test-input.txt");
+            await File.WriteAllTextAsync(testInputPath, testInput);
         }
         else
         {
@@ -102,6 +130,14 @@ public class MarkdownSpecPass : ICompilerPass
                 JsonSerializer.Deserialize<List<AssertionRecord>>(json, opts) ?? [];
             _logger.LogDebug("Loaded {Count} authorial assertions from {Path}",
                 context.AuthorialAssertions.Count, criteriaPath);
+        }
+
+        // Restore test input if present.
+        var testInputPath = Path.Combine(Path.GetDirectoryName(artifactPath)!, "00-test-input.txt");
+        if (File.Exists(testInputPath))
+        {
+            context.TestInput = await File.ReadAllTextAsync(testInputPath);
+            _logger.LogDebug("Loaded test input from {Path}", testInputPath);
         }
     }
 
@@ -269,6 +305,24 @@ public class MarkdownSpecPass : ICompilerPass
         return result;
     }
 
+    // Parses "## Test Input" section: the first non-empty line after the heading is the test input.
+    private static string? ParseTestInputBlock(string markdown)
+    {
+        var lines     = markdown.Split('\n');
+        var inSection = false;
+        foreach (var line in lines)
+        {
+            var trimmed = line.TrimEnd('\r');
+            if (trimmed.StartsWith("## Test Input", StringComparison.OrdinalIgnoreCase))
+            { inSection = true; continue; }
+            if (!inSection) continue;
+            if (trimmed.StartsWith('#')) break; // next section
+            if (!string.IsNullOrWhiteSpace(trimmed))
+                return trimmed.Trim();
+        }
+        return null;
+    }
+
     private const string SpecSystemPrompt = """
         You are a compiler front-end. Your job is to read a program specification written
         in Markdown and extract it as a structured .spec file.
@@ -288,8 +342,11 @@ public class MarkdownSpecPass : ICompilerPass
 
           variable:
             name: <identifier>
-            type: <type>
+            type: int | string
             initial_value: <int>    # optional; omit if not explicitly initialized
+            source: stdin           # optional; omit unless the variable is read from user input
+
+          print: "<string or {variable}>"   # unconditional output line (no branch needed)
 
           assign:
             target: <identifier>
@@ -303,6 +360,16 @@ public class MarkdownSpecPass : ICompilerPass
             op: copy
             left: {a}
 
+        For programs that read input and print strings in sequence, use print: and variable:
+        (with source: stdin) — NO loop:, NO branch:. Example:
+          program: Greetings
+          print: "Hello! What is your name?"
+          variable:
+            name: user_name
+            type: string
+            source: stdin
+          print: "{user_name}"
+
         Rules:
         1. Output ONLY the .spec content — no explanation, no markdown fences.
         2. Use snake_case for all condition names.
@@ -311,7 +378,8 @@ public class MarkdownSpecPass : ICompilerPass
         5. Use assign: blocks for arithmetic (multiply, add, subtract, copy). Do NOT use branch/divisor for arithmetic.
         6. For {variable} operands use braces: {a}. For integer constants use the number directly: 7.
         7. Do NOT add an assign: block that increments the loop counter (e.g. "assign n add {n} 1"). The loop counter is incremented automatically.
-        8. If the document describes a program that cannot be expressed in this format,
+        8. For programs with no loop: use print: for unconditional output. Do NOT use branch: for unconditional output.
+        9. If the document describes a program that cannot be expressed in this format,
            output a single line: ERROR: <reason>
         """;
 
