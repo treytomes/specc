@@ -1,6 +1,6 @@
 # Spec 21 — Direct Graph Extraction from Markdown
 
-**Status:** Deferred — requires a stronger model or constrained decoding  
+**Status:** Deferred — depends on Spec 22 (structured output) as prerequisite  
 **Scope:** `MarkdownSpecPass.cs`, `Program.cs`, `ArtifactWriter.cs`; `ParseSpecPass` and `SemanticGraphPass` become `.spec`-only fallbacks
 
 ## Implementation Notes (2026-07-16)
@@ -11,7 +11,7 @@ Attempted with ministral-3b. Two blocking issues discovered:
 
 2. **Structural reliability**: ministral-3b doesn't reliably produce the graph topology the pipeline requires. For FizzBuzz's "divisible by both 3 and 5" condition it generated a `Comparison` node and two separate `Modulo` nodes (mod3, mod5) with a `DependsOn → Comparison` edge, instead of a single `Modulo(15)` with `DependsOn → Modulo`. This structurally valid but pipeline-incompatible representation broke `AcceptanceCriteriaPass` and `CfgPass`.
 
-Viable with: mistral-7b or qwen2.5-coder:7b (higher instruction fidelity), or constrained JSON decoding (grammar-based sampling to enforce schema compliance). Not viable with ministral-3b as the sole extraction model.
+**Revised plan (2026-07-17)**: Spec 22 wires up Ollama's `format` parameter with a JSON Schema via `ChatOptions.ResponseFormat`. With grammar-based sampling constrained to the `SemanticGraph` schema — enumerating valid `kind` discriminator values and required fields per node type — the model cannot produce structurally invalid graph topology. Spec 21 should be revisited after Spec 22 is complete, using the graph schema as the `ResponseFormat`. The speed issue remains (more output tokens than `.spec`) but is more tolerable once structural reliability is solved, and constrained sampling also tends to reduce token waste from prose and re-tries.
 
 ## Motivation
 

@@ -43,9 +43,14 @@ public class AcceptanceCriteriaPass : ICompilerPass
             if (context.AuthorialAssertions.Count != arrayNode.Size)
             {
                 if (context.AuthorialAssertions.Count > 0)
+                {
                     _logger.LogWarning(
                         "Discarding {Count} authorial assertions — expected {Size} (one per array element)",
                         context.AuthorialAssertions.Count, arrayNode.Size);
+                    // Remove the stale artifact so it isn't reloaded on the next incremental run.
+                    var badFile = Path.Combine(context.ArtifactsDir, "00-authorial-criteria.json");
+                    if (File.Exists(badFile)) File.Delete(badFile);
+                }
                 context.AuthorialAssertions = [];
             }
 

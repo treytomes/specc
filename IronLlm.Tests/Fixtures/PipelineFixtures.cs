@@ -124,6 +124,43 @@ internal static class PipelineFixtures
     }
 
     /// <summary>
+    /// Builds the SelectionSort semantic graph directly (no LLM required).
+    /// Array: [64, 25, 12, 22, 11, 90, 3, 45], sorted: [3, 11, 12, 22, 25, 45, 64, 90]
+    /// </summary>
+    public static IronLlm.Graph.SemanticGraph BuildSelectionSortGraph()
+    {
+        var graph    = new IronLlm.Graph.SemanticGraph();
+        var program  = new IronLlm.Graph.ProgramNode(
+            Guid.NewGuid(), "Program:SelectionSort", "SelectionSort");
+        var arr      = new IronLlm.Graph.ArrayNode(
+            Guid.NewGuid(), "Array:arr[8]", "arr", "int", 8,
+            new[] { 64, 25, 12, 22, 11, 90, 3, 45 });
+        var outerLoop = new IronLlm.Graph.LoopNode(
+            Guid.NewGuid(), "Loop:i:0..6", 0, 6);
+        var innerLoop = new IronLlm.Graph.NestedLoopNode(
+            Guid.NewGuid(), "NestedLoop:j:i+1..7", "j", 0, "7");
+        var minIndex  = new IronLlm.Graph.VariableNode(
+            Guid.NewGuid(), "Var:min_index", "min_index", "int");
+        var swapNode  = new IronLlm.Graph.SwapNode(
+            Guid.NewGuid(), "Swap:arr[i]<->arr[min_index]", "arr", "i", "min_index");
+
+        graph.Add(program);
+        graph.Add(arr);
+        graph.Add(outerLoop);
+        graph.Add(innerLoop);
+        graph.Add(minIndex);
+        graph.Add(swapNode);
+
+        graph.Connect(program.Id, arr.Id,       IronLlm.Graph.EdgeType.Contains);
+        graph.Connect(program.Id, outerLoop.Id, IronLlm.Graph.EdgeType.Contains);
+        graph.Connect(program.Id, innerLoop.Id, IronLlm.Graph.EdgeType.Contains);
+        graph.Connect(program.Id, minIndex.Id,  IronLlm.Graph.EdgeType.Contains);
+        graph.Connect(program.Id, swapNode.Id,  IronLlm.Graph.EdgeType.Contains);
+
+        return graph;
+    }
+
+    /// <summary>
     /// Runs the BubbleSort graph through AcceptanceCriteria, CFG, StackIR, and MSIL passes.
     /// </summary>
     public static async Task<CompilationContext> AfterBubbleSortMsilAsync(string artifactsDir)

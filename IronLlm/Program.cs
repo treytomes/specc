@@ -38,9 +38,19 @@ var verboseOpt = new Option<bool>("--verbose")
     Description = "Set log level to Debug",
 };
 
+var runOpt = new Option<bool>("--run")
+{
+    Description = "Execute the compiled binary immediately after a successful build",
+};
+
+var chatModelOpt = new Option<string?>("--chat-model")
+{
+    Description = "Override the chat model for this compilation (default: IRONLLM_CHAT_MODEL env / ministral-3:3b)",
+};
+
 var compileCommand = new Command("compile", "Compile a .spec or .md file to a native executable")
 {
-    specOpt, outOpt, forceOpt, verboseOpt,
+    specOpt, outOpt, forceOpt, verboseOpt, runOpt, chatModelOpt,
 };
 
 var rootCommand = new RootCommand("IronLlm — spec compiler") { compileCommand };
@@ -50,7 +60,10 @@ compileCommand.SetAction(async result =>
     var spec    = result.GetValue(specOpt);
     var outDir  = result.GetValue(outOpt);
     var force   = result.GetValue(forceOpt) ?? [];
-    var verbose = result.GetValue(verboseOpt);
+    var verbose         = result.GetValue(verboseOpt);
+    var run             = result.GetValue(runOpt);
+    var chatModelOverride = result.GetValue(chatModelOpt);
+    var effectiveChatModel = chatModelOverride ?? chatModel;
 
     var specPath = spec?.FullName
         ?? Path.GetFullPath("examples/FizzBuzz/FizzBuzz.md");
@@ -100,7 +113,7 @@ compileCommand.SetAction(async result =>
         .AddSingleton<IEmbeddingGenerator<string, Embedding<float>>>(_ =>
             new OllamaEmbeddingGenerator(new Uri(ollamaBase), embedModel))
         .AddSingleton<IChatClient>(_ =>
-            new OllamaChatClient(new Uri(ollamaBase), chatModel));
+            new OllamaChatClient(new Uri(ollamaBase), effectiveChatModel));
 
     if (isMarkdown)
         builder.Services.AddTransient<ICompilerPass, MarkdownSpecPass>();
@@ -114,6 +127,7 @@ compileCommand.SetAction(async result =>
         .AddTransient<ICompilerPass, RepositoryRetrievalPass>()
         .AddTransient<ICompilerPass, SemanticNormalizationPass>()
         .AddTransient<ICompilerPass, CfgPass>()
+        .AddTransient<ICompilerPass, CfgVisualizationPass>()
         .AddTransient<ICompilerPass, StackIrPass>()
         .AddTransient<ICompilerPass, SemanticValidationPass>()
         .AddTransient<ICompilerPass, MsilGenerationPass>()
@@ -129,12 +143,31 @@ compileCommand.SetAction(async result =>
     var context = new CompilationContext
     {
         SpecPath       = specPath,
+        InputPath      = specPath,
         ArtifactsDir   = artifactsDir,
         RepositoryPath = Path.Combine(repoRoot, "repository"),
     };
 
     var pipeline = host.Services.GetRequiredService<CompilationPipeline>();
+    Log.Logger.Information("Chat model: {Model}", effectiveChatModel);
     await pipeline.RunAsync(context);
+
+    if (run)
+    {
+        var launcher = context.LauncherPath ?? context.AssemblyPath;
+        if (launcher == null)
+        {
+            Console.Error.WriteLine("--run: no executable produced by this compilation");
+            return;
+        }
+
+        var proc = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+        {
+            FileName  = launcher,
+            UseShellExecute = false,
+        });
+        await proc!.WaitForExitAsync();
+    }
 });
 
 return await rootCommand.Parse(args).InvokeAsync();

@@ -125,6 +125,9 @@ public class AssemblyEmitPass : ICompilerPass
                 case IrOp.Sub:
                     il.Emit(OpCodes.Sub);
                     break;
+                case IrOp.Mul:
+                    il.Emit(OpCodes.Mul);
+                    break;
                 case IrOp.Rem:
                     il.Emit(OpCodes.Rem);
                     break;

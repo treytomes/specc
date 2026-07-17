@@ -17,6 +17,7 @@ public enum OpCode
     Cgt,     // compare greater-than
     Brtrue,  // branch if true (pops bool)
     Sub,       // subtract
+    Mul,       // multiply
     Newarr,    // allocate int array; no operand (size already on stack)
     LdlocA,    // load array local; operand = array name
     StlocA,    // store array local; operand = array name

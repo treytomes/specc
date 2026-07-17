@@ -113,6 +113,16 @@ public class StackIrPass : ICompilerPass
             yield break;
         }
 
+        // "{var} = {var2}" — variable-to-variable copy, e.g. "min_index = j"
+        // Must come before the int-init pattern (which also matches "{var} = {int}").
+        var varCopyMatch = Regex.Match(s, @"^(\w+)\s*=\s*([a-zA-Z_]\w*)$");
+        if (varCopyMatch.Success)
+        {
+            yield return new(OpCode.LdlocS, varCopyMatch.Groups[2].Value);
+            yield return new(OpCode.StlocS, varCopyMatch.Groups[1].Value);
+            yield break;
+        }
+
         // "{var} = {int}" — loop variable init, e.g. "n = 1"
         // Must not match "{var} = {var} + 1" (increment).
         var initMatch = Regex.Match(s, @"^(\w+)\s*=\s*(-?\d+)$");
@@ -172,6 +182,56 @@ public class StackIrPass : ICompilerPass
             yield return new(OpCode.Add);
             yield return new(OpCode.LdelemI4);
             yield return new(OpCode.Cgt);
+            yield break;
+        }
+
+        // "if {arr}[{v1}] < {arr}[{v2}]" — element comparison with two variable indices
+        var arrCmpVarMatch = Regex.Match(s, @"^if\s+(\w+)\[(\w+)\]\s*<\s*\1\[(\w+)\]$");
+        if (arrCmpVarMatch.Success)
+        {
+            var arrName = arrCmpVarMatch.Groups[1].Value;
+            var idx1    = arrCmpVarMatch.Groups[2].Value;
+            var idx2    = arrCmpVarMatch.Groups[3].Value;
+            // Push arr[idx2] > arr[idx1] (i.e. arr[idx1] < arr[idx2]) as Cgt.
+            // StackIrPass emits Brtrue → SuccessorFalse when last op is Cgt.
+            // CfgPass sets SuccessorFalse = "update_min" so: cgt=true → update_min.
+            yield return new(OpCode.LdlocA,   arrName);
+            yield return new(OpCode.LdlocS,   idx2);
+            yield return new(OpCode.LdelemI4);
+            yield return new(OpCode.LdlocA,   arrName);
+            yield return new(OpCode.LdlocS,   idx1);
+            yield return new(OpCode.LdelemI4);
+            yield return new(OpCode.Cgt);
+            yield break;
+        }
+
+        // "swap {arr}[{v1}] {arr}[{v2}]" — swap two elements with variable indices
+        var swapVarMatch = Regex.Match(s, @"^swap\s+(\w+)\[(\w+)\]\s+\1\[(\w+)\]$");
+        if (swapVarMatch.Success)
+        {
+            var arrName = swapVarMatch.Groups[1].Value;
+            var idx1    = swapVarMatch.Groups[2].Value;
+            var idx2    = swapVarMatch.Groups[3].Value;
+
+            // temp = arr[idx1]
+            yield return new(OpCode.LdlocA,   arrName);
+            yield return new(OpCode.LdlocS,   idx1);
+            yield return new(OpCode.LdelemI4);
+            yield return new(OpCode.StlocS,   "temp");
+
+            // arr[idx1] = arr[idx2]
+            yield return new(OpCode.LdlocA,   arrName);
+            yield return new(OpCode.LdlocS,   idx1);
+            yield return new(OpCode.LdlocA,   arrName);
+            yield return new(OpCode.LdlocS,   idx2);
+            yield return new(OpCode.LdelemI4);
+            yield return new(OpCode.StelemI4);
+
+            // arr[idx2] = temp
+            yield return new(OpCode.LdlocA,   arrName);
+            yield return new(OpCode.LdlocS,   idx2);
+            yield return new(OpCode.LdlocS,   "temp");
+            yield return new(OpCode.StelemI4);
             yield break;
         }
 
@@ -247,6 +307,52 @@ public class StackIrPass : ICompilerPass
             yield return new(OpCode.LdcI4,  "1");
             yield return new(OpCode.Add);
             yield return new(OpCode.StlocS, incrMatch.Groups[1].Value);
+            yield break;
+        }
+
+        // "assign {target} copy {left}" — variable copy (no right operand)
+        var assignCopyMatch = Regex.Match(s, @"^assign\s+(\w+)\s+copy\s+(\{?\w+\}?)$");
+        if (assignCopyMatch.Success)
+        {
+            var target = assignCopyMatch.Groups[1].Value;
+            var lRaw   = assignCopyMatch.Groups[2].Value;
+            var name   = lRaw.Trim('{', '}');
+            if (int.TryParse(name, out var cv))
+                yield return new(OpCode.LdcI4, cv.ToString());
+            else
+                yield return new(OpCode.LdlocS, name);
+            yield return new(OpCode.StlocS, target);
+            yield break;
+        }
+
+        // "assign {target} {op} {left} {right}" — arithmetic assignment
+        // left/right are either {varName} (variable reference) or bare integer literals.
+        var assignMatch = Regex.Match(s, @"^assign\s+(\w+)\s+(mul|add|sub)\s+(\{?\w+\}?)\s+(\{?\w+\}?)$");
+        if (assignMatch.Success)
+        {
+            var target = assignMatch.Groups[1].Value;
+            var op     = assignMatch.Groups[2].Value;
+            var lRaw   = assignMatch.Groups[3].Value;
+            var rRaw   = assignMatch.Groups[4].Value;
+
+            static IEnumerable<StackInstruction> LoadOperand(string raw)
+            {
+                var name = raw.Trim('{', '}');
+                if (int.TryParse(name, out var v))
+                    yield return new(OpCode.LdcI4, v.ToString());
+                else
+                    yield return new(OpCode.LdlocS, name);
+            }
+
+            foreach (var i in LoadOperand(lRaw)) yield return i;
+            foreach (var i in LoadOperand(rRaw)) yield return i;
+            yield return op switch
+            {
+                "mul" => new(OpCode.Mul),
+                "sub" => new(OpCode.Sub),
+                _     => new(OpCode.Add),
+            };
+            yield return new(OpCode.StlocS, target);
             yield break;
         }
     }

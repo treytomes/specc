@@ -41,7 +41,9 @@ public class SemanticNormalizationPass : ICompilerPass
         ("Array",      "An array of integer values with a fixed size."),
         ("Index",      "Access to an array element by index position."),
         ("Swap",       "Swap two elements in an array."),
-        ("NestedLoop", "An inner loop whose upper bound depends on an outer loop variable."),
+        ("NestedLoop",  "An inner loop whose upper bound depends on an outer loop variable."),
+        ("Arithmetic",  "A binary arithmetic operation: multiply, add, or subtract."),
+        ("Assign",      "Assign the result of an arithmetic operation to a variable."),
     ];
 
     private readonly IEmbeddingGenerator<string, Embedding<float>> _embedder;
@@ -102,8 +104,9 @@ public class SemanticNormalizationPass : ICompilerPass
         {
             var node = graph.Nodes[i];
 
-            // AssertionNodes are metadata, not semantic program nodes — skip normalization.
-            if (node is AssertionNode) continue;
+            // AssertionNodes are metadata; ArithmeticNode/AssignNode are exact-typed from the parsed spec.
+            // None of these need similarity-based validation.
+            if (node is AssertionNode or ArithmeticNode or AssignNode) continue;
 
             if (!embeddingMap.TryGetValue(node.Id, out var embedding))
             {
@@ -193,6 +196,8 @@ public class SemanticNormalizationPass : ICompilerPass
         IndexNode      => "Index",
         SwapNode       => "Swap",
         NestedLoopNode => "NestedLoop",
+        ArithmeticNode => "Arithmetic",
+        AssignNode     => "Assign",
         _              => "Unknown",
     };
 
@@ -211,7 +216,9 @@ public class SemanticNormalizationPass : ICompilerPass
             "Array"      => new ArrayNode(node.Id, node.Label, ExtractIdentifier(node.Label), "int", 10),
             "Index"      => new IndexNode(node.Id, node.Label, ExtractArrayName(node.Label), "0"),
             "Swap"       => new SwapNode(node.Id, node.Label, ExtractArrayName(node.Label), "j", "j+1"),
-            "NestedLoop" => new NestedLoopNode(node.Id, node.Label, ExtractIdentifier(node.Label), 0, "n-1"),
+            "NestedLoop"  => new NestedLoopNode(node.Id, node.Label, ExtractIdentifier(node.Label), 0, "n-1"),
+            "Arithmetic"  => new ArithmeticNode(node.Id, node.Label, "add"),
+            "Assign"      => new AssignNode(node.Id, node.Label, ExtractIdentifier(node.Label), "add", "0", "0"),
             _ => throw new CompilationException(
                 $"Cannot reclassify node '{node.Label}' to unknown kind '{targetKind}'"),
         };
@@ -231,6 +238,10 @@ public class SemanticNormalizationPass : ICompilerPass
         IndexNode ix      => $"Index:{ix.ArrayName}[{ix.IndexExpr}]",
         SwapNode sw       => $"Swap:{sw.ArrayName}[{sw.FromExpr}↔{sw.ToExpr}]",
         NestedLoopNode nl => $"NestedLoop:{nl.Variable}<{nl.BoundExpr}",
+        ArithmeticNode ar => $"Arithmetic:{ar.Op}",
+        AssignNode an     => an.Op == "copy"
+            ? $"Assign:{an.Target}=copy({an.Left})"
+            : $"Assign:{an.Target}={an.Op}({an.Left},{an.Right})",
         _                 => node.Label,
     };
 

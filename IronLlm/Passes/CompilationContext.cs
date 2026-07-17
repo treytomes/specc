@@ -6,6 +6,7 @@ namespace IronLlm.Passes;
 public class CompilationContext
 {
     public required string SpecPath { get; set; }
+    public string? InputPath { get; init; }
     public required string ArtifactsDir { get; init; }
 
     public string? RawSpec { get; set; }

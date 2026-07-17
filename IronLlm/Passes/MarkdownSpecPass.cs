@@ -47,9 +47,24 @@ public class MarkdownSpecPass : ICompilerPass
         await File.WriteAllTextAsync(specArtifact, extracted);
         context.SpecPath = specArtifact;
 
-        // Second LLM call: extract acceptance rules from prose (authorial intent).
-        var criteria = await ExtractAuthorialCriteriaAsync(markdown);
-        var authorial = EvaluateRules(criteria);
+        // Try to extract expected output directly from a fenced code block under
+        // "## Expected Output" — deterministic, no LLM needed, works for array programs.
+        var directLines = ParseExpectedOutputBlock(markdown);
+        List<AssertionRecord> authorial;
+        if (directLines.Count > 0)
+        {
+            authorial = directLines
+                .Select((line, i) => new AssertionRecord(i, line))
+                .ToList();
+            _logger.LogInformation("Parsed {Count} expected output lines directly from Markdown", authorial.Count);
+        }
+        else
+        {
+            // Fall back to the LLM criteria call for loop/divisor programs.
+            var criteria = await ExtractAuthorialCriteriaAsync(markdown);
+            authorial = EvaluateRules(criteria);
+        }
+
         if (authorial.Count > 0)
         {
             context.AuthorialAssertions = authorial;
@@ -102,6 +117,32 @@ public class MarkdownSpecPass : ICompilerPass
         return response.Text?.Trim() ?? "";
     }
 
+    private static readonly JsonElement CriteriaSchema = JsonDocument.Parse("""
+        {
+          "type": "object",
+          "properties": {
+            "loopFrom": { "type": "integer" },
+            "loopTo":   { "type": "integer" },
+            "rules": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "divisor":   { "type": "integer" },
+                  "isDefault": { "type": "boolean" },
+                  "expected":  { "type": "string"  }
+                }
+              }
+            }
+          }
+        }
+        """).RootElement;
+
+    private static readonly ChatOptions CriteriaOptions = new()
+    {
+        ResponseFormat = ChatResponseFormat.ForJsonSchema(CriteriaSchema, "AuthorialCriteria", null),
+    };
+
     private async Task<AuthorialCriteriaDto> ExtractAuthorialCriteriaAsync(string markdown)
     {
         var messages = new List<ChatMessage>
@@ -112,18 +153,8 @@ public class MarkdownSpecPass : ICompilerPass
 
         try
         {
-            var response = await _chat.GetResponseAsync(messages);
+            var response = await _chat.GetResponseAsync(messages, CriteriaOptions);
             var text = response.Text?.Trim() ?? "{}";
-
-            // Strip markdown fences if the model wrapped it.
-            if (text.StartsWith("```", StringComparison.Ordinal))
-            {
-                var start = text.IndexOf('{');
-                var end   = text.LastIndexOf('}');
-                if (start >= 0 && end > start)
-                    text = text[start..(end + 1)];
-            }
-
             var opts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
             return JsonSerializer.Deserialize<AuthorialCriteriaDto>(text, opts) ?? new AuthorialCriteriaDto();
         }
@@ -195,7 +226,13 @@ public class MarkdownSpecPass : ICompilerPass
         catch (FormatException)
         {
             // Dynamic bounds or other non-literal values in the spec — not an LLM error.
-            // The spec text is accepted; downstream passes handle the extended constructs.
+            return;
+        }
+        catch (CompilationException)
+        {
+            // The spec describes a program type the current flat-loop parser can't validate
+            // (e.g. array sorting programs where the LLM uses divisor-style branch syntax).
+            // Accept the spec; CfgPass dispatches on graph shape, not spec syntax.
             return;
         }
 
@@ -207,6 +244,29 @@ public class MarkdownSpecPass : ICompilerPass
         if (!graph.Nodes.OfType<ProgramNode>().Any())
             throw new CompilationException(
                 "LLM extraction produced a .spec with no program: declaration.");
+    }
+
+    private static List<string> ParseExpectedOutputBlock(string markdown)
+    {
+        var lines     = markdown.Split('\n');
+        var inSection = false;
+        var inFence   = false;
+        var result    = new List<string>();
+        foreach (var line in lines)
+        {
+            var trimmed = line.TrimEnd('\r');
+            if (trimmed.StartsWith("## Expected Output", StringComparison.OrdinalIgnoreCase))
+            { inSection = true; continue; }
+            if (!inSection) continue;
+            if (trimmed.StartsWith("```", StringComparison.Ordinal))
+            {
+                if (!inFence) { inFence = true; continue; }
+                break; // closing fence — done
+            }
+            if (inFence && trimmed.Length > 0)
+                result.Add(trimmed);
+        }
+        return result;
     }
 
     private const string SpecSystemPrompt = """
@@ -229,13 +289,29 @@ public class MarkdownSpecPass : ICompilerPass
           variable:
             name: <identifier>
             type: <type>
+            initial_value: <int>    # optional; omit if not explicitly initialized
+
+          assign:
+            target: <identifier>
+            op: mul                 # mul, add, sub, or copy
+            left: {variable_or_int}
+            right: {variable_or_int} # omit entirely when op is copy
+
+        The "copy" op copies one variable into another. It has no right operand:
+          assign:
+            target: tmp
+            op: copy
+            left: {a}
 
         Rules:
         1. Output ONLY the .spec content — no explanation, no markdown fences.
         2. Use snake_case for all condition names.
         3. Include a "default" branch (no divisor) for the fallback output.
-        4. The variable block must name the loop counter.
-        5. If the document describes a program that cannot be expressed in this format,
+        4. The variable block must name the loop counter (e.g. n).
+        5. Use assign: blocks for arithmetic (multiply, add, subtract, copy). Do NOT use branch/divisor for arithmetic.
+        6. For {variable} operands use braces: {a}. For integer constants use the number directly: 7.
+        7. Do NOT add an assign: block that increments the loop counter (e.g. "assign n add {n} 1"). The loop counter is incremented automatically.
+        8. If the document describes a program that cannot be expressed in this format,
            output a single line: ERROR: <reason>
         """;
 

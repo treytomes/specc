@@ -117,6 +117,7 @@ public class MsilGenerationPass : ICompilerPass
                     OpCode.LdcI4    => $"    ldc.i4 {instr.Operand}",
                     OpCode.Add      => $"    add",
                     OpCode.Sub      => $"    sub",
+                    OpCode.Mul      => $"    mul",
                     OpCode.Rem      => $"    rem",
                     OpCode.Ceq      => $"    ceq",
                     OpCode.Cgt      => $"    cgt",

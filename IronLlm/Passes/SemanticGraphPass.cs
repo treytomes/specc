@@ -69,7 +69,9 @@ public class SemanticGraphPass : ICompilerPass
             }
             else if (line.StartsWith("divisor:"))
             {
-                pendingBranchDivisor = int.Parse(line["divisor:".Length..].Trim());
+                if (int.TryParse(line["divisor:".Length..].Trim(), out var d) && d > 0)
+                    pendingBranchDivisor = d;
+                // divisor: 0 or non-integer — LLM placeholder for array programs; ignore.
             }
             else if (line.StartsWith("true_output:"))
             {
@@ -97,6 +99,28 @@ public class SemanticGraphPass : ICompilerPass
 
         BuildLoopNode(lines, graph, program);
         BuildVariableNode(lines, graph, program);
+        BuildAssignNodes(lines, graph, program);
+
+        // When the LLM couldn't express the program (ERROR: in spec) and graph has min_index
+        // but no ArrayNode, try to recover the array from the original Markdown source.
+        if (spec.Contains("\nERROR:") || spec.EndsWith("ERROR:", StringComparison.Ordinal))
+        {
+            var hasMinIndex = graph.Nodes.OfType<VariableNode>()
+                .Any(v => v.Name.Equals("min_index", StringComparison.OrdinalIgnoreCase));
+            var hasArray = graph.Nodes.OfType<ArrayNode>().Any();
+            if (hasMinIndex && !hasArray && context.InputPath?.EndsWith(".md", StringComparison.OrdinalIgnoreCase) == true)
+            {
+                var mdText = File.ReadAllText(context.InputPath);
+                var recovered = TryExtractArrayFromMarkdown(mdText);
+                if (recovered != null)
+                {
+                    var arr = new ArrayNode(Guid.NewGuid(), $"Array:arr[{recovered.Length}]", "arr", "int", recovered.Length, recovered);
+                    graph.Add(arr);
+                    if (program != null) graph.Connect(program.Id, arr.Id, EdgeType.Contains);
+                    _logger.LogInformation("Recovered {Count}-element array from Markdown (LLM spec was incomplete)", recovered.Length);
+                }
+            }
+        }
 
         // Warn about absent structural sections
         if (!graph.Nodes.OfType<LoopNode>().Any())
@@ -113,6 +137,59 @@ public class SemanticGraphPass : ICompilerPass
         context.SemanticGraph = graph;
         _logger.LogInformation("Pass {Name} completed in {ElapsedMs}ms", Name, sw.ElapsedMilliseconds);
         return Task.CompletedTask;
+    }
+
+    private static void BuildAssignNodes(string[] lines, SemanticGraph graph, ProgramNode? program)
+    {
+        bool inAssign = false;
+        string? target = null, op = null, left = null, right = null;
+
+        void Flush()
+        {
+            if (target == null || op == null || left == null) return;
+            // copy requires only left; all others require right too
+            if (op != "copy" && right == null) return;
+            var label = op == "copy"
+                ? $"Assign:{target}=copy({left})"
+                : $"Assign:{target}={op}({left},{right})";
+            var assign = new AssignNode(Guid.NewGuid(), label, target, op, left, right);
+            graph.Add(assign);
+            if (program != null) graph.Connect(program.Id, assign.Id, EdgeType.Contains);
+            target = null; op = null; left = null; right = null;
+        }
+
+        foreach (var line in lines)
+        {
+            if (line == "assign:") { Flush(); inAssign = true; continue; }
+            if (!inAssign) continue;
+
+            if (line.StartsWith("target:")) { target = line["target:".Length..].Trim(); continue; }
+            if (line.StartsWith("op:"))     { op     = line["op:".Length..].Trim();     continue; }
+            if (line.StartsWith("left:"))   { left   = line["left:".Length..].Trim();   continue; }
+            if (line.StartsWith("right:"))  { right  = line["right:".Length..].Trim();  continue; }
+
+            if (line.StartsWith("branch:") || line.StartsWith("loop:") || line.StartsWith("variable:") || line.StartsWith("program:"))
+            {
+                Flush(); inAssign = false;
+            }
+        }
+        Flush();
+    }
+
+    private static int[]? TryExtractArrayFromMarkdown(string markdown)
+    {
+        // Heuristic: find a line with 3+ space-separated integers, e.g. "Start with: 64 25 12 22 11 90 3 45"
+        foreach (var line in markdown.Split('\n'))
+        {
+            var tokens = line.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            var nums = tokens.Select(t => int.TryParse(t, out var v) ? (int?)v : null)
+                             .Where(v => v.HasValue)
+                             .Select(v => v!.Value)
+                             .ToArray();
+            if (nums.Length >= 3)
+                return nums;
+        }
+        return null;
     }
 
     private static void BuildLoopNode(string[] lines, SemanticGraph graph, ProgramNode? program)
@@ -167,38 +244,69 @@ public class SemanticGraphPass : ICompilerPass
     private static void BuildVariableNode(string[] lines, SemanticGraph graph, ProgramNode? program)
     {
         bool inVar = false;
-        string? name = null, type = null;
+        string? name = null, type = null, initialValue = null;
+
+        void FlushVar()
+        {
+            if (name == null || type == null) return;
+            EmitVariable(graph, program, name, type, initialValue);
+            name = null; type = null; initialValue = null;
+        }
+
         foreach (var line in lines)
         {
-            if (line == "variable:") { inVar = true; name = null; type = null; continue; }
+            if (line == "variable:") { FlushVar(); inVar = true; continue; }
             if (!inVar) continue;
-            if (line.StartsWith("name:")) { name = line["name:".Length..].Trim(); continue; }
-            if (line.StartsWith("type:")) { type = line["type:".Length..].Trim(); continue; }
+            if (line.StartsWith("name:"))          { name         = line["name:".Length..].Trim();          continue; }
+            if (line.StartsWith("type:"))          { type         = line["type:".Length..].Trim();          continue; }
+            if (line.StartsWith("initial_value:")) { initialValue = line["initial_value:".Length..].Trim(); continue; }
 
             // Flush on any non-variable keyword
-            if ((line.StartsWith("branch:") || line.StartsWith("loop:") || line.StartsWith("program:")) && name != null && type != null)
+            if (line.StartsWith("branch:") || line.StartsWith("loop:") || line.StartsWith("program:") || line.StartsWith("assign:"))
             {
-                EmitVariable(graph, program, name, type);
-                inVar = false; name = null; type = null;
+                FlushVar(); inVar = false;
             }
         }
-        if (name != null && type != null)
-            EmitVariable(graph, program, name, type);
+        FlushVar();
     }
 
-    private static void EmitVariable(SemanticGraph graph, ProgramNode? program, string name, string type)
+    private static void EmitVariable(
+        SemanticGraph graph, ProgramNode? program, string name, string type, string? initialValue = null)
     {
-        // int[N] → ArrayNode; plain type → VariableNode
-        var arrayMatch = System.Text.RegularExpressions.Regex.Match(type, @"^int\[(\d+)\]$");
-        if (arrayMatch.Success && int.TryParse(arrayMatch.Groups[1].Value, out var size))
+        // array[int] or int[N] → ArrayNode; plain type → VariableNode
+        var arrayMatch = System.Text.RegularExpressions.Regex.Match(type, @"^(?:array\[int\]|int\[(\d+)\])$");
+
+        // Resolve size: from explicit int[N] type, or from the initial_value element count.
+        int size = 0;
+        if (arrayMatch.Groups[1].Success)
+            int.TryParse(arrayMatch.Groups[1].Value, out size);
+
+        int[]? values = null;
+        if (initialValue != null)
         {
-            var arr = new ArrayNode(Guid.NewGuid(), $"Array:{name}[{size}]", name, "int", size);
+            var nums = initialValue.Trim('[', ']')
+                .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+                .Select(t => int.TryParse(t, out var v) ? v : 0)
+                .ToArray();
+            if (nums.Length > 0)
+            {
+                values = nums;
+                if (size == 0) size = nums.Length;
+            }
+        }
+
+        if (arrayMatch.Success && size > 0)
+        {
+            var arr = new ArrayNode(Guid.NewGuid(), $"Array:{name}[{size}]", name, "int", size, values);
             graph.Add(arr);
             if (program != null) graph.Connect(program.Id, arr.Id, EdgeType.Contains);
         }
         else
         {
-            var varNode = new VariableNode(Guid.NewGuid(), $"Var:{name}", name, type);
+            int? scalarInit = null;
+            if (initialValue != null && int.TryParse(initialValue.Trim(), out var sv))
+                scalarInit = sv;
+            var varNode = new VariableNode(Guid.NewGuid(), $"Var:{name}", name, type, scalarInit);
             graph.Add(varNode);
             if (program != null) graph.Connect(program.Id, varNode.Id, EdgeType.Contains);
         }

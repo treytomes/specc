@@ -255,6 +255,61 @@ public class MarkdownSpecPassTests
         finally { Directory.Delete(dir, recursive: true); }
     }
 
+    // ── ParseExpectedOutputBlock (via full-pass execution) ───────────────────
+
+    private static readonly string BubbleSortMarkdown = """
+        # BubbleSort
+
+        Sort an array.
+
+        ## Expected Output
+        ```
+        3
+        11
+        12
+        ```
+        """;
+
+    [Fact]
+    public async Task Execute_UsesDirectOutputBlock_WhenPresent()
+    {
+        // The pass should parse "## Expected Output" lines directly, never calling
+        // the LLM criteria extraction for such documents.
+        var tmp    = Path.GetTempFileName() + ".md";
+        var outDir = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
+        Directory.CreateDirectory(outDir);
+        try
+        {
+            await File.WriteAllTextAsync(tmp, BubbleSortMarkdown);
+            var ctx = new CompilationContext { SpecPath = tmp, ArtifactsDir = outDir };
+            // First response is the .spec extract; second would be the LLM criteria call.
+            // With a direct output block, the second call should never happen.
+            // We make the second response invalid JSON to confirm it is not used.
+            await MakeQueuedPass(ValidSpec, "NOT JSON").ExecuteAsync(ctx);
+            Assert.Equal(3, ctx.AuthorialAssertions.Count);
+            Assert.Equal("3",  ctx.AuthorialAssertions[0].Expected);
+            Assert.Equal("11", ctx.AuthorialAssertions[1].Expected);
+            Assert.Equal("12", ctx.AuthorialAssertions[2].Expected);
+        }
+        finally
+        {
+            File.Delete(tmp);
+            Directory.Delete(outDir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task Execute_FallsBackToLlmCriteria_WhenNoOutputBlock()
+    {
+        var (ctx, dir) = await RunQueuedPassAsync(ValidSpec, ValidCriteriaJson);
+        try
+        {
+            // No "## Expected Output" block in SampleMarkdown → LLM criteria path runs.
+            Assert.Equal(100, ctx.AuthorialAssertions.Count);
+        }
+        finally { Directory.Delete(dir, recursive: true); }
+    }
+
     [Fact]
     public static void EvaluateRules_ReturnsEmpty_WhenDtoHasNoRules()
     {

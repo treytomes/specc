@@ -10,31 +10,34 @@ The deeper experiment: if programs are graphs with semantic embeddings, they bec
 
 ## Pipeline
 
-Twelve passes, each writing a named artifact to an output directory. The pipeline is **incremental**: if an artifact already exists, the pass is skipped and context is loaded from disk.
+Fourteen passes, each writing a named artifact to an output directory. The pipeline is **incremental**: if an artifact already exists, the pass is skipped and context is loaded from disk.
 
 ```
 FizzBuzz.md
     │
     ▼ MarkdownSpecPass ──────────── 00-extracted.spec          LLM: extract spec from prose
-    │                  └─────────── 00-authorial-criteria.json LLM: extract acceptance rules from prose
+    │                  └─────────── 00-authorial-criteria.json LLM or direct parse: acceptance rules
     ▼ ParseSpecPass ─────────────── 01-spec.json
     ▼ SemanticGraphPass ─────────── 02-semantic-graph.json     typed node/edge graph
     ▼ GraphVisualizationPass ─────── 02b-semantic-graph.mmd    Mermaid flowchart
     │                        └────── 02c-semantic-graph.svg    layered SVG (browser-ready)
     ▼ AcceptanceCriteriaPass ─────── 00-acceptance.json        expected output, derived from graph
     ▼ EmbeddingPass ─────────────── 03-embeddings.json         per-node vectors (LLM)
+    ▼ RepositoryRetrievalPass ────── (no artifact)             retrieve similar prior compilations
     ▼ SemanticNormalizationPass ──── 03b-normalized-graph.json label normalization via cosine similarity
     ▼ CfgPass ───────────────────── 04-cfg.json                control-flow graph
     ▼ StackIrPass ───────────────── 05-stackir.json            stack machine IR
     ▼ MsilGenerationPass ────────── 06-program.il              IL assembly text
+    ▼ SemanticValidationPass ──────── (no artifact)            graph invariant checks
     ▼ AssemblyEmitPass ──────────── 07-program.dll             managed PE
     │                  └─────────── FizzBuzz                   native launcher
     ▼ AcceptanceVerificationPass                               launch binary, diff against criteria
+    ▼ RepositoryPersistPass ──────── (no artifact)             persist compilation to graph repository
 ```
 
 The LLM is used in two places: extracting a `.spec` from a Markdown description (ministral-3b), and embedding each graph node as a semantic vector (mxbai-embed-large). Everything else is deterministic.
 
-`AcceptanceVerificationPass` prefers acceptance rules extracted from the Markdown prose over rules derived from the graph. Graph-derived rules verify internal consistency; prose-derived rules verify authorial intent — they can catch bugs introduced by the extraction passes themselves.
+`AcceptanceVerificationPass` prefers acceptance rules extracted from the Markdown prose over rules derived from the graph. Graph-derived rules verify internal consistency; prose-derived rules verify authorial intent — they can catch bugs introduced by the extraction passes themselves. For `.md` files with an `## Expected Output` block, the expected lines are parsed directly without an LLM call.
 
 ## Quickstart
 
@@ -99,6 +102,68 @@ variable:
 
 Branches are evaluated in declaration order. The `default` branch has no `divisor`.
 
+For programs that compute values (rather than just label iterations), use `assign:` blocks and `initial_value:`:
+
+```
+program: Fibonacci
+
+loop:
+  from: 1
+  to: 10
+
+variable:
+  name: a
+  type: int
+  initial_value: 1
+
+variable:
+  name: b
+  type: int
+  initial_value: 0
+
+variable:
+  name: tmp
+  type: int
+
+assign:
+  target: tmp
+  op: copy
+  left: {a}
+
+assign:
+  target: a
+  op: add
+  left: {a}
+  right: {b}
+
+assign:
+  target: b
+  op: copy
+  left: {tmp}
+
+branch:
+  condition: default
+  true_output: {a}
+```
+
+Valid ops: `mul`, `add`, `sub`, `copy`. When `assign:` blocks are present, any `branch:`/`divisor:` entries in the same spec are treated as LLM noise and dropped. The loop counter is incremented automatically — do not add an `assign:` block for it.
+
+## Working examples
+
+| Example | Description | Result |
+|---------|-------------|--------|
+| FizzBuzz | 1–100 divisibility labels | 100/100 |
+| BubbleSort | 10-element in-place sort | 10/10 |
+| SelectionSort | 8-element selection sort | 8/8 |
+| Multiples | Print first 12 multiples of 7 | 12/12 |
+| Fibonacci | Print first 10 Fibonacci numbers | 10/10 |
+
+Run any example:
+
+```bash
+./scripts/run.sh examples/Fibonacci/Fibonacci.md
+```
+
 ## Project structure
 
 ```
@@ -111,6 +176,10 @@ IronLlm.Tests/
   Fixtures/       PipelineFixtures, FakeLogger
 examples/
   FizzBuzz/       FizzBuzz.md + artifacts/ (generated)
+  BubbleSort/     BubbleSort.md + artifacts/
+  SelectionSort/  SelectionSort.md + artifacts/
+  Multiples/      Multiples.md + artifacts/
+  Fibonacci/      Fibonacci.md + artifacts/
 scripts/
   install.sh      Dependency setup
   build.sh        dotnet build
@@ -118,8 +187,8 @@ scripts/
   test.sh         Build + unit tests + pipeline smoke test
   assemble.sh     Optional: re-assemble 06-program.il with ilasm
 specs/
-  completed/      Implemented design specs (08–14)
-  incomplete/     Upcoming work (01–06)
+  completed/      Implemented design specs
+  incomplete/     Upcoming work
 ```
 
 ## Prerequisites
@@ -151,13 +220,13 @@ Each `ICompilerPass` declares an `ArtifactFile`. Before executing a pass, the ru
 
 **Why a semantic graph at all?** It is the persistence layer for program intent. Once a program has been compiled and its graph and embeddings are saved, future compilations of similar programs can retrieve and reuse prior structural patterns (Spec 03). The embeddings open the door to gradient-based refinement of the graph structure itself (Spec 04) — the experiment the whole project is pointing toward.
 
+**Why `op: copy` instead of `add {x} 0`?** Small models (ministral-3b) conflate the copy step with the addition step when the spec format only offers arithmetic ops. Adding `copy` as a first-class op gives the model a natural vocabulary and eliminates a systematic extraction failure for Fibonacci-style programs.
+
 ## Roadmap
 
 | Spec | Title | Status |
 |------|-------|--------|
-| 01 | StackIR lowering (ilasm round-trip) | Ready |
-| 02 | SHA-256 artifact manifest | Ready |
-| 03 | Graph repository (persist + retrieve) | Design |
 | 04 | Differentiable node MLPs | Research |
-| 05 | BubbleSort — second example program | Ready (after 01) |
-| 06 | Semantic validation pass | Ready |
+| 20 | Roadmap to self-hosting | Exploration |
+| 21 | Direct graph extraction | Design |
+| 29 | Greetings example (string I/O) | Design |

@@ -42,19 +42,28 @@ Each pass implements `ICompilerPass` (`Name`, `ArtifactFile`, `ExecuteAsync`, `L
 | 02 | `SemanticGraphPass` | `02-semantic-graph.json` | Deterministic parser → typed node/edge graph |
 | 02b | `GraphVisualizationPass` | `02b-semantic-graph.mmd` + `02c-semantic-graph.svg` | Mermaid flowchart and layered SVG from graph; `AssertionNode`s excluded |
 | 02c | `AcceptanceCriteriaPass` | `00-acceptance.json` | Derives expected output deterministically from graph; adds `AssertionNode`s with `EdgeType.Asserts` edges |
-| 03 | `EmbeddingPass` | `03-embeddings.json` | mxbai-embed-large via Ollama — one call per non-`AssertionNode` |
-| 03b | `SemanticNormalizationPass` | `03b-normalized-graph.json` | Cosine similarity against reference corpus; reclassifies and relabels nodes below threshold 0.60 |
-| 04 | `CfgPass` | `04-cfg.json` | Deterministic structural lowering; block labels derived from branch condition names |
+| 03 | `EmbeddingPass` | `03-embeddings.json` | mxbai-embed-large via Ollama — one call per non-`AssertionNode`, non-`ArithmeticNode`, non-`AssignNode` |
+| 03b | `SemanticNormalizationPass` | `03b-normalized-graph.json` | Cosine similarity against reference corpus; reclassifies and relabels nodes below threshold 0.60. `ArithmeticNode`/`AssignNode` are exact-typed from the parsed spec and skip this gate. |
+| 03c | `RepositoryRetrievalPass` | (no artifact) | Retrieves similar prior compilations from the graph repository; populates `context.PriorCompilations` |
+| 04 | `CfgPass` | `04-cfg.json` | Deterministic structural lowering; dispatches on graph shape (flat loop / bubble sort / selection sort) |
 | 05 | `StackIrPass` | `05-stackir.json` | Pattern-match CFG instructions → stack opcodes |
 | 06 | `MsilGenerationPass` | `06-program.il` | Stack IR → IL assembly text |
 | 07 | `AssemblyEmitPass` | `07-program.dll` + `{Name}` | `PersistedAssemblyBuilder` → patched apphost launcher |
+| 08 | `SemanticValidationPass` | (no artifact, runs before assembly) | Invariant checks on the semantic graph |
 | 08 | `AcceptanceVerificationPass` | (terminal, no artifact) | Launch compiled binary; diff stdout against `AuthorialAssertions` (authorial intent) or `Assertions` (graph-derived) |
+| 09 | `RepositoryPersistPass` | (no artifact) | Stores the completed compilation unit in the graph repository |
 
 ### `AssertionNode` and the acceptance circuit
 
 `AcceptanceCriteriaPass` adds `AssertionNode`s to the semantic graph (connected to the program node via `EdgeType.Asserts`) and populates `context.Assertions`. These nodes are excluded from `EmbeddingPass` and `SemanticNormalizationPass` — they are metadata, not semantic program structure.
 
 `AcceptanceVerificationPass` prefers `context.AuthorialAssertions` when non-empty. These come from a second LLM call in `MarkdownSpecPass` that extracts acceptance rules directly from the prose, breaking the circular dependency: graph-derived criteria can only verify internal consistency, not authorial intent.
+
+For `.md` files that contain an `## Expected Output` fenced block, `MarkdownSpecPass` parses the block directly (no LLM call) and uses those lines as authorial assertions.
+
+### Node types excluded from normalization
+
+`AssertionNode`, `ArithmeticNode`, and `AssignNode` are all skipped by `SemanticNormalizationPass`. The first is metadata; the latter two are exact-typed from the parsed `.spec` and do not benefit from similarity-based validation against the reference corpus.
 
 ## The `.spec` file format
 
@@ -73,9 +82,16 @@ branch:
 variable:
   name: <identifier>
   type: <type>
+  initial_value: <int>     # optional; sets the variable before the loop
+
+assign:
+  target: <identifier>
+  op: mul | add | sub | copy
+  left: {variable} | <int>
+  right: {variable} | <int> # omit when op is copy
 ```
 
-Branches are evaluated in declaration order. The `default` branch (no `divisor`) provides the fallback output. Alternatively, pass a `.md` file and `MarkdownSpecPass` will extract the spec from prose.
+Branches are evaluated in declaration order. The `default` branch (no `divisor`) provides the fallback output. `assign:` blocks express arithmetic and variable copies. When `assign:` blocks are present, all `branch:`/`divisor:` entries are treated as LLM noise and dropped by `CfgPass`. Alternatively, pass a `.md` file and `MarkdownSpecPass` will extract the spec from prose.
 
 ## Running
 
@@ -108,15 +124,26 @@ The compiled executable is written to `<artifacts-dir>/<ProgramName>` and is dir
 
 **apphost patching in-process.** `AssemblyEmitPass` uses `PersistedAssemblyBuilder` for PE emission and patches the SDK's `apphost` binary to produce a directly executable launcher — no `ilasm`, no `dotnet publish`, no shell-out.
 
+## Completed examples
+
+| Example | Description | Status |
+|---------|-------------|--------|
+| FizzBuzz | Classic 1–100 divisibility label program | 100/100 assertions pass |
+| Fizz | Single-branch variant (divisible by 3 → "Fizz") | Pass |
+| FizzBuzzHundred | Two-branch variant (÷7 "Fizz", ÷11 "Buzz") | Pass |
+| CountDown | Print 1–10, no branches | Pass |
+| BubbleSort | 10-element in-place sort, array lowering | 10/10 assertions pass |
+| SelectionSort | 8-element selection sort | 8/8 assertions pass |
+| Multiples | Loop 1–12, print n×7 each iteration | 12/12 assertions pass |
+| Fibonacci | Print first 10 Fibonacci numbers via a, b, tmp variables | 10/10 assertions pass |
+
 ## Upcoming work
 
 See `specs/incomplete/` for detailed design docs:
 
 | Spec | Title | Notes |
 |------|-------|-------|
-| 01 | StackIR pattern tightening | Fix lowering gaps so `ilasm` round-trip works |
-| 02 | SHA-256 artifact manifest | Hash-based incremental invalidation |
-| 03 | Graph repository | Persist and retrieve prior compilations |
 | 04 | Differentiable node MLPs | Gradient-based graph structure refinement |
-| 05 | BubbleSort | Second example program |
-| 06 | Semantic validation pass | Invariant checking at each pipeline stage |
+| 20 | Roadmap to self-hosting | Long-horizon exploration |
+| 21 | Direct graph extraction | Skip MarkdownSpecPass for well-formed inputs |
+| 29 | Greetings example | `InputNode`, string variables, linear CFG, stdin acceptance testing |
