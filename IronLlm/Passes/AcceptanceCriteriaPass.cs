@@ -66,9 +66,11 @@ public class AcceptanceCriteriaPass : ICompilerPass
             .Where(e => e.Type == EdgeType.DependsOn)
             .Select(e => new
             {
-                Branch  = graph.Nodes.OfType<BranchNode>().First(n => n.Id == e.From),
-                Divisor = graph.Nodes.OfType<ModuloNode>().First(n => n.Id == e.To).Divisor,
+                Branch = graph.Nodes.OfType<BranchNode>().FirstOrDefault(n => n.Id == e.From),
+                Modulo = graph.Nodes.OfType<ModuloNode>().FirstOrDefault(n => n.Id == e.To),
             })
+            .Where(x => x.Branch != null && x.Modulo != null)
+            .Select(x => new { Branch = x.Branch!, Divisor = x.Modulo!.Divisor })
             .OrderByDescending(x => x.Divisor)
             .ToList();
 
