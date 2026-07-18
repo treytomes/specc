@@ -59,6 +59,10 @@ public static class GraphRepository
             .Select(n => n.Name)
             .FirstOrDefault() ?? "Unknown";
 
+        var specText = File.Exists(context.SpecPath)
+            ? await File.ReadAllTextAsync(context.SpecPath)
+            : "";
+
         var unit = new CompiledUnit(
             Id:                Guid.NewGuid(),
             SpecHash:          specHash,
@@ -68,13 +72,40 @@ public static class GraphRepository
             EmbeddingsPath:    embeddingsPath,
             CfgPath:           cfgPath,
             StackIrPath:       stackIrPath,
-            MsilPath:          msilPath
+            MsilPath:          msilPath,
+            SpecText:          specText
         );
 
         index.Units.Add(unit);
 
         var json = JsonSerializer.Serialize(index, JsonOpts);
         await File.WriteAllTextAsync(indexPath, json);
+    }
+
+    // Returns up to topK prior specs whose stored spec text contains keywords matching the
+    // given classifier tags, ranked by number of matching tags descending.
+    // Skips entries with empty SpecText (persisted before this field was added).
+    public static async Task<List<(string ProgramName, string SpecText)>> FindPriorsByTagsAsync(
+        string repositoryPath, string[] tags, int topK = 2)
+    {
+        if (!Directory.Exists(repositoryPath)) return [];
+        var indexPath = Path.Combine(repositoryPath, "index.json");
+        if (!File.Exists(indexPath)) return [];
+
+        var index = await LoadIndexAsync(indexPath);
+
+        static int CountMatches(string specText, string[] tags) =>
+            tags.Count(tag => specText.Contains(tag + ":", StringComparison.Ordinal));
+
+        return index.Units
+            .Where(u => !string.IsNullOrEmpty(u.SpecText))
+            .Select(u => (u.ProgramName, u.SpecText, Score: CountMatches(u.SpecText, tags)))
+            .Where(x => x.Score > 0)
+            .OrderByDescending(x => x.Score)
+            .ThenByDescending(x => x.SpecText.Length)
+            .Take(topK)
+            .Select(x => (x.ProgramName, x.SpecText))
+            .ToList();
     }
 
     public static async Task<List<SimilarPrior>> FindSimilarAsync(

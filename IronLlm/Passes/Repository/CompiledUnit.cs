@@ -9,7 +9,8 @@ public record CompiledUnit(
     string EmbeddingsPath,
     string CfgPath,
     string StackIrPath,
-    string MsilPath
+    string MsilPath,
+    string SpecText = ""     // raw .spec content; empty for entries persisted before this field was added
 );
 
 public record RepositoryIndex(List<CompiledUnit> Units);

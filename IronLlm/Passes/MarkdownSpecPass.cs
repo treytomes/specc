@@ -36,13 +36,13 @@ public class MarkdownSpecPass : ICompilerPass
 
         var tags      = await ClassifyAsync(markdown);
         _logger.LogInformation("Classifier selected construct families: [{Tags}]", string.Join(", ", tags));
-        var extracted = await ExtractSpecAsync(markdown, tags);
+        var extracted = await ExtractSpecAsync(markdown, tags, context.RepositoryPath);
 
         if (extracted.StartsWith("ERROR:", StringComparison.OrdinalIgnoreCase))
         {
             _logger.LogWarning("Extraction failed with [{Tags}] — retrying with full construct set", string.Join(", ", tags));
             tags      = ["loop", "branch", "arithmetic", "input", "array", "while", "random"];
-            extracted = await ExtractSpecAsync(markdown, tags);
+            extracted = await ExtractSpecAsync(markdown, tags, context.RepositoryPath);
         }
 
         if (extracted.StartsWith("ERROR:", StringComparison.OrdinalIgnoreCase))
@@ -94,6 +94,11 @@ public class MarkdownSpecPass : ICompilerPass
                 })
                 .ToList();
             _logger.LogInformation("Parsed {Count} expected output lines directly from Markdown", authorial.Count);
+        }
+        else if (extracted.Contains("random:", StringComparison.Ordinal))
+        {
+            // Non-deterministic program — no predictable expected output; skip criteria extraction.
+            authorial = [];
         }
         else
         {
@@ -191,9 +196,23 @@ public class MarkdownSpecPass : ICompilerPass
         }
     }
 
-    private async Task<string> ExtractSpecAsync(string markdown, string[] tags)
+    private async Task<string> ExtractSpecAsync(string markdown, string[] tags,
+        string repositoryPath = "")
     {
         var systemPrompt = SpecConstructLibrary.Assemble(tags);
+
+        if (!string.IsNullOrEmpty(repositoryPath))
+        {
+            var priors = await IronLlm.Passes.Repository.GraphRepository
+                .FindPriorsByTagsAsync(repositoryPath, tags);
+            if (priors.Count > 0)
+            {
+                var priorsText = string.Join("\n\n",
+                    priors.Select(p => $"Prior example ({p.ProgramName}):\n{p.SpecText.Trim()}"));
+                systemPrompt += $"\n\nHere are similar programs that have been compiled successfully. Use them as structural templates:\n\n{priorsText}\n";
+            }
+        }
+
         var messages = new List<ChatMessage>
         {
             new(ChatRole.System, systemPrompt),
