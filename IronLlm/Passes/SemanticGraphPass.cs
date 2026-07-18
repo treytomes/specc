@@ -444,6 +444,25 @@ public class SemanticGraphPass : ICompilerPass
 
         hasLoop = graph.Nodes.OfType<LoopNode>().Any();
 
+        // If the spec placed a print: before the while: header (LLM ordering error), the PrintNode
+        // landed in linearContainsOrder as a program-level child. Relocate it to the WhileLoopNode
+        // when the while body has branches but no print of its own — it belongs in the loop body.
+        if (whileNode != null)
+        {
+            var whileHasPrint = graph.Edges
+                .Any(e => e.From == whileNode.Id && e.Type == EdgeType.Contains
+                       && graph.Nodes.FirstOrDefault(n => n.Id == e.To) is PrintNode);
+            if (!whileHasPrint)
+            {
+                var toRelocate = linearContainsOrder.OfType<PrintNode>().ToList();
+                foreach (var p in toRelocate)
+                {
+                    linearContainsOrder.Remove(p);
+                    graph.Connect(whileNode.Id, p.Id, EdgeType.Contains);
+                }
+            }
+        }
+
         // Emit Contains edges in declaration order (works for both loop and linear programs).
         foreach (var node in linearContainsOrder)
             if (program != null) graph.Connect(program.Id, node.Id, EdgeType.Contains);

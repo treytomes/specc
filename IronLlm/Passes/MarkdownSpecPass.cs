@@ -393,13 +393,23 @@ public class MarkdownSpecPass : ICompilerPass
             if (trimmed.StartsWith("## Expected Output", StringComparison.OrdinalIgnoreCase))
             { inSection = true; continue; }
             if (!inSection) continue;
+            // Next ## heading ends a bare-line block.
+            if (trimmed.StartsWith("## ", StringComparison.Ordinal) && result.Count > 0)
+                break;
             if (trimmed.StartsWith("```", StringComparison.Ordinal))
             {
                 if (!inFence) { inFence = true; continue; }
                 break; // closing fence — done
             }
-            if (inFence && trimmed.Length > 0)
+            if (inFence)
+            {
+                if (trimmed.Length > 0) result.Add(trimmed);
+            }
+            else if (trimmed.Length > 0)
+            {
+                // Bare (non-fenced) line — collect directly.
                 result.Add(trimmed);
+            }
         }
         return result;
     }
