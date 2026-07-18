@@ -29,7 +29,15 @@ public class CompilationPipeline
             }
 
             _logger.LogInformation("Running pass {Name}", pass.Name);
-            await pass.ExecuteAsync(context);
+            try
+            {
+                await pass.ExecuteAsync(context);
+            }
+            catch (CompilationException ex)
+            {
+                _logger.LogError("Pass {Name} failed: {Message}", pass.Name, ex.Message);
+                throw;
+            }
             await ArtifactWriter.WritePassArtifactAsync(pass, context, _logger);
         }
 

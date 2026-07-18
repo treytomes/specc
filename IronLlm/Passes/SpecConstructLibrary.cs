@@ -28,6 +28,16 @@ public static class SpecConstructLibrary
 
         The loop counter is incremented automatically — do NOT add an assign: that increments it.
 
+        Example (print 1 through 5):
+          program: CountDown
+          loop:
+            from: 1
+            to: 5
+          variable:
+            name: n
+            type: int
+          print: "{n}"
+
         """;
 
     public static string BranchSection => """
@@ -49,6 +59,22 @@ public static class SpecConstructLibrary
         Use snake_case for all condition names.
         For runtime value comparisons (e.g. "if n < 42") use compare: + value:, NOT divisor:.
 
+        Example (print Fizz if divisible by 3, else n, for 1–10):
+          program: Fizz
+          loop:
+            from: 1
+            to: 10
+          variable:
+            name: n
+            type: int
+          branch:
+            condition: fizz
+            divisor: 3
+            true_output: "Fizz"
+          branch:
+            condition: default
+            true_output: "{n}"
+
         """;
 
     public static string ArithSection => """
@@ -69,6 +95,24 @@ public static class SpecConstructLibrary
 
         For {variable} operands use braces: {a}. For integer constants use the number directly: 7.
         Use assign: for ALL arithmetic. Do NOT use branch:/divisor: for arithmetic.
+
+        Example (print n×2 for n from 1 to 5):
+          program: Doubles
+          loop:
+            from: 1
+            to: 5
+          variable:
+            name: n
+            type: int
+          variable:
+            name: result
+            type: int
+          assign:
+            target: result
+            op: mul
+            left: {n}
+            right: 2
+          print: "{result}"
 
         """;
 
@@ -92,6 +136,14 @@ public static class SpecConstructLibrary
             type: string
             source: stdin
           print: "{user_name}"
+
+        Example (read a number and print it back):
+          program: Echo
+          variable:
+            name: n
+            type: int
+            source: stdin
+          print: "{n}"
 
         """;
 
@@ -145,6 +197,25 @@ public static class SpecConstructLibrary
             compare_with: {variable}    # variable rhs instead of value: <int>
             true_output: "<string>"
 
+        Example (keep halving n until it equals 1):
+          program: Halve
+          variable:
+            name: n
+            type: int
+            source: stdin
+          while:
+            variable: n
+            condition: ne
+            value: 1
+          print: "{n}"
+          branch:
+            condition: default
+            true_assign:
+              target: n
+              op: div
+              left: {n}
+              right: 2
+
         """;
 
     public static string RandomSection => """
@@ -158,6 +229,14 @@ public static class SpecConstructLibrary
 
         This declares a variable whose value is a random integer in [min, max] (inclusive).
         Use the variable name with braces ({name}) to reference it in branch: or print: blocks.
+
+        Example (pick a number 1–6 and print it):
+          program: DiceRoll
+          random:
+            name: roll
+            min: 1
+            max: 6
+          print: "{roll}"
 
         """;
 

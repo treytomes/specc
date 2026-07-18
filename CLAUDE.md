@@ -184,5 +184,4 @@ See `specs/incomplete/` for detailed design docs:
 | 21 | Direct graph extraction | Skip MarkdownSpecPass for well-formed inputs — deferred, needs ≥7B model |
 | 29 | Greetings example | `InputNode`, string variables, linear CFG, stdin acceptance testing |
 | 35 | Embedding geometry validation | `scripts/geometry.py` — 2/3 cluster checks pass; BubbleSort↔SelectionSort narrowly fails vs BubbleSort↔FizzBuzz (0.928 vs 0.932) |
-| 40 | Construct library worked examples | Add a minimal complete `.spec` example to each `SpecConstructLibrary` section to improve structural reliability |
 
