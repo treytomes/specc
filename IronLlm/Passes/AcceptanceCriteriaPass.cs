@@ -43,6 +43,15 @@ public class AcceptanceCriteriaPass : ICompilerPass
             return Task.CompletedTask;
         }
 
+        if (graph.Nodes.OfType<WhileLoopNode>().Any())
+        {
+            context.Assertions = [];
+            _logger.LogInformation(
+                "While-loop program detected — skipping graph-derived assertions ({Authorial} authorial assertion(s) available)",
+                context.AuthorialAssertions.Count);
+            return Task.CompletedTask;
+        }
+
         var arrayNode = graph.Nodes.OfType<ArrayNode>().FirstOrDefault();
         if (arrayNode != null)
         {

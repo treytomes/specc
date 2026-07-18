@@ -1,6 +1,6 @@
 # Spec 21 — Direct Graph Extraction from Markdown
 
-**Status:** Deferred — blocked on output format and speed
+**Status:** Deferred — blocked on model capacity (ministral-3b too slow and unreliable for graph-sized output; requires a larger model)
 **Scope:** `MarkdownSpecPass.cs`; `ParseSpecPass` and `SemanticGraphPass` skip when graph is already set
 
 ## Implementation Notes
@@ -28,12 +28,20 @@ The goal is an intermediate that is:
 **Candidate: YAML node list with explicit edge notation.**
 YAML eliminates JSON's syntactic overhead (braces, quotes on keys, closing tokens) while remaining structured. A FizzBuzz graph in YAML is approximately 40–50% fewer tokens than the equivalent JSON. The model has extensive YAML training data (k8s, GitHub Actions, docker-compose).
 
-The open question is whether ministral-3b produces well-formed YAML reliably for structured data it hasn't seen before — specifically, whether it fills all required type-specific fields. This should be tested empirically before committing to implementation.
+### Attempt 3 (2026-07-17) — YAML spike
+Sent a compact YAML prompt to ministral-3b (604 input tokens) and measured generation time for FizzBuzz. Results:
+1. **Speed worse, not better**: 411 seconds, **4039 output tokens** at 10.1 tok/s. The model generated the graph twice — it produced a first draft, then emitted inline prose ("Corrected the last edge..."), then emitted a second corrected draft. Total output is ~5× the expected YAML token count.
+2. **Format violations**: output was fenced in `` ```yaml ``` `` despite explicit "no fences" instruction. Requires stripping.
+3. **Hallucinated nodes**: introduced two boolean Variable nodes (`divisibleBy3`, `divisibleBy5`) not present in the source spec. Node count inflated even before the second-draft duplication.
+4. **Invalid UUIDs**: generated hex digits outside `[0-9a-f]` (e.g. `g7h8i9j0`). UUID parsing would fail.
+5. **Topology still wrong in first draft**: Modulo:3 and Modulo:5 present alongside Modulo:15 despite the explicit "ONE Modulo(15)" rule. Second draft partially corrected this but retained the stray nodes.
+
+**Conclusion: YAML does not solve the problem.** The token count is not reduced in practice because the model self-corrects mid-output, inflating generation. The structural reliability and field-completeness problems persist. ministral-3b does not have the capacity to hold the full graph schema and input context simultaneously without degrading.
 
 **Candidate: retain `.spec` but make it structurally isomorphic to the graph.**
 Rather than a new format, extend `.spec` so that each construct maps 1:1 to a graph node. The parser becomes a graph builder, not a text interpreter. This avoids a new format but still requires growing the spec syntax per new node type.
 
-**Decision gate**: implement YAML extraction as a spike (single example, measure token count and field completeness) before committing to full implementation. If YAML solves both speed and null-field problems, implement fully. If not, the `.spec` format remains and Spec 21 is deferred until a larger extraction model is available.
+**Decision gate (resolved)**: the YAML spike conclusively failed. Spec 21 is deferred until a larger extraction model is available — ministral-3b cannot reliably produce a complete, well-formed graph for FizzBuzz-complexity programs regardless of intermediate format. The `.spec` path remains the extraction mechanism.
 
 ## Motivation
 

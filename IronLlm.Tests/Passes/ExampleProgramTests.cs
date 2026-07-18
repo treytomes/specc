@@ -46,27 +46,8 @@ public class ExampleProgramTests : IDisposable
     private static async Task<string[]> RunAndGetLines(CompilationContext ctx)
     {
         var pass = new AcceptanceVerificationPass(NullLogger<AcceptanceVerificationPass>.Instance);
-        await pass.ExecuteAsync(ctx);   // throws on failure
-
-        var launcher = ctx.LauncherPath ?? ctx.AssemblyPath!;
-        var psi = new System.Diagnostics.ProcessStartInfo(launcher)
-        {
-            RedirectStandardOutput = true,
-            UseShellExecute        = false,
-        };
-        if (!System.IO.File.Exists(launcher) || !IsExecutable(launcher))
-        {
-            psi = new System.Diagnostics.ProcessStartInfo("dotnet", launcher)
-            {
-                RedirectStandardOutput = true,
-                UseShellExecute        = false,
-            };
-        }
-        using var p = System.Diagnostics.Process.Start(psi)!;
-        var stdout = await p.StandardOutput.ReadToEndAsync();
-        await p.WaitForExitAsync();
-        return stdout.Split('\n', StringSplitOptions.RemoveEmptyEntries)
-                     .Select(l => l.TrimEnd('\r')).ToArray();
+        await pass.ExecuteAsync(ctx);   // throws on failure; also populates ctx.VerificationOutput
+        return ctx.VerificationOutput!;
     }
 
     private static bool IsExecutable(string path) =>
@@ -460,5 +441,272 @@ public class ExampleProgramTests : IDisposable
         var lines = await RunBinaryAndGetLines(ctx);
         var expected = new[] { "1", "1", "2", "3", "5", "8", "13", "21", "34", "55" };
         Assert.Equal(expected, lines);
+    }
+
+    // ── Guesser (int input, comparison branching) ─────────────────────────────
+
+    private const string GuesserSpec = """
+        program: Guesser
+
+        variable:
+          name: guess
+          type: int
+          source: stdin
+
+        branch:
+          condition: too_low
+          compare: lt
+          value: 42
+          true_output: "Too low."
+
+        branch:
+          condition: too_high
+          compare: gt
+          value: 42
+          true_output: "Too high."
+
+        branch:
+          condition: correct
+          true_output: "Correct!"
+        """;
+
+    private async Task<CompilationContext> CompileGuesser(string input)
+    {
+        var ctx = new CompilationContext
+        {
+            SpecPath     = "fake.spec",
+            ArtifactsDir = _artifactsDir,
+            RawSpec      = GuesserSpec,
+            TestInput    = input,
+        };
+        await PipelineFixtures.MakeSemanticGraphPass().ExecuteAsync(ctx);
+        await new AcceptanceCriteriaPass(NullLogger<AcceptanceCriteriaPass>.Instance).ExecuteAsync(ctx);
+        await PipelineFixtures.MakeCfgPass().ExecuteAsync(ctx);
+        await PipelineFixtures.MakeStackIrPass().ExecuteAsync(ctx);
+        await PipelineFixtures.MakeMsilGenerationPass().ExecuteAsync(ctx);
+        await new AssemblyEmitPass(NullLogger<AssemblyEmitPass>.Instance).ExecuteAsync(ctx);
+        return ctx;
+    }
+
+    private static async Task<string> RunGuesserAndGetOutput(CompilationContext ctx)
+    {
+        var launcher = ctx.LauncherPath ?? ctx.AssemblyPath!;
+        System.Diagnostics.ProcessStartInfo psi;
+        if (System.IO.File.Exists(launcher) && IsExecutable(launcher))
+            psi = new(launcher) { RedirectStandardOutput = true, RedirectStandardInput = true, UseShellExecute = false };
+        else
+            psi = new("dotnet", launcher) { RedirectStandardOutput = true, RedirectStandardInput = true, UseShellExecute = false };
+
+        using var p = System.Diagnostics.Process.Start(psi)!;
+        await p.StandardInput.WriteLineAsync(ctx.TestInput);
+        p.StandardInput.Close();
+        var stdout = await p.StandardOutput.ReadToEndAsync();
+        await p.WaitForExitAsync();
+        return stdout.Trim();
+    }
+
+    [Fact]
+    public async Task Guesser_CorrectGuess_PrintsCorrect()
+    {
+        var ctx = await CompileGuesser("42");
+        Assert.Equal("Correct!", await RunGuesserAndGetOutput(ctx));
+    }
+
+    [Fact]
+    public async Task Guesser_LowGuess_PrintsTooLow()
+    {
+        var ctx = await CompileGuesser("10");
+        Assert.Equal("Too low.", await RunGuesserAndGetOutput(ctx));
+    }
+
+    [Fact]
+    public async Task Guesser_HighGuess_PrintsTooHigh()
+    {
+        var ctx = await CompileGuesser("99");
+        Assert.Equal("Too high.", await RunGuesserAndGetOutput(ctx));
+    }
+
+    // ── Calculator (two int inputs, addition) ─────────────────────────────────
+
+    private const string CalculatorSpec = """
+        program: Calculator
+
+        variable:
+          name: a
+          type: int
+          source: stdin
+
+        variable:
+          name: b
+          type: int
+          source: stdin
+
+        assign:
+          target: sum
+          op: add
+          left: {a}
+          right: {b}
+
+        print: {sum}
+        """;
+
+    private async Task<CompilationContext> CompileCalculator(string input)
+    {
+        var ctx = new CompilationContext
+        {
+            SpecPath     = "fake.spec",
+            ArtifactsDir = _artifactsDir,
+            RawSpec      = CalculatorSpec,
+            TestInput    = input,
+        };
+        await PipelineFixtures.MakeSemanticGraphPass().ExecuteAsync(ctx);
+        await new AcceptanceCriteriaPass(NullLogger<AcceptanceCriteriaPass>.Instance).ExecuteAsync(ctx);
+        await PipelineFixtures.MakeCfgPass().ExecuteAsync(ctx);
+        await PipelineFixtures.MakeStackIrPass().ExecuteAsync(ctx);
+        await PipelineFixtures.MakeMsilGenerationPass().ExecuteAsync(ctx);
+        await new AssemblyEmitPass(NullLogger<AssemblyEmitPass>.Instance).ExecuteAsync(ctx);
+        return ctx;
+    }
+
+    private static async Task<string> RunCalculatorAndGetOutput(CompilationContext ctx)
+    {
+        var launcher = ctx.LauncherPath ?? ctx.AssemblyPath!;
+        System.Diagnostics.ProcessStartInfo psi;
+        if (System.IO.File.Exists(launcher) && IsExecutable(launcher))
+            psi = new(launcher) { RedirectStandardOutput = true, RedirectStandardInput = true, UseShellExecute = false };
+        else
+            psi = new("dotnet", launcher) { RedirectStandardOutput = true, RedirectStandardInput = true, UseShellExecute = false };
+
+        using var p = System.Diagnostics.Process.Start(psi)!;
+        await p.StandardInput.WriteAsync(ctx.TestInput + "\n");
+        p.StandardInput.Close();
+        var stdout = await p.StandardOutput.ReadToEndAsync();
+        await p.WaitForExitAsync();
+        return stdout.Trim();
+    }
+
+    [Fact]
+    public async Task Calculator_AddsTwoIntegers()
+    {
+        var ctx = await CompileCalculator("3\n7");
+        Assert.Equal("10", await RunCalculatorAndGetOutput(ctx));
+    }
+
+    [Fact]
+    public async Task Calculator_NegativeSum()
+    {
+        var ctx = await CompileCalculator("-5\n3");
+        Assert.Equal("-2", await RunCalculatorAndGetOutput(ctx));
+    }
+
+    [Fact]
+    public async Task Calculator_ZeroResult()
+    {
+        var ctx = await CompileCalculator("0\n0");
+        Assert.Equal("0", await RunCalculatorAndGetOutput(ctx));
+    }
+
+    // ── Collatz (while loop, integer division, parity branching) ─────────────
+
+    private const string CollatzSpec = """
+        program: Collatz
+
+        variable:
+          name: n
+          type: int
+          source: stdin
+
+        while:
+          variable: n
+          condition: ne
+          value: 1
+
+        print: {n}
+
+        branch:
+          condition: even
+          divisor: 2
+          true_assign:
+            target: n
+            op: div
+            left: {n}
+            right: 2
+
+        branch:
+          condition: odd
+          true_assign:
+            target: n
+            op: mul
+            left: {n}
+            right: 3
+          true_assign:
+            target: n
+            op: add
+            left: {n}
+            right: 1
+        """;
+
+    private async Task<CompilationContext> CompileCollatz(string input)
+    {
+        var ctx = new CompilationContext
+        {
+            SpecPath     = "fake.spec",
+            ArtifactsDir = _artifactsDir,
+            RawSpec      = CollatzSpec,
+            TestInput    = input,
+            AuthorialAssertions = input == "6"
+                ? new[] {"6","3","10","5","16","8","4","2","1"}
+                    .Select((s, i) => new AssertionRecord(i + 1, s)).ToList()
+                : new List<AssertionRecord>(),
+        };
+        await PipelineFixtures.MakeSemanticGraphPass().ExecuteAsync(ctx);
+        await new AcceptanceCriteriaPass(NullLogger<AcceptanceCriteriaPass>.Instance).ExecuteAsync(ctx);
+        await PipelineFixtures.MakeCfgPass().ExecuteAsync(ctx);
+        await PipelineFixtures.MakeStackIrPass().ExecuteAsync(ctx);
+        await PipelineFixtures.MakeMsilGenerationPass().ExecuteAsync(ctx);
+        await new AssemblyEmitPass(NullLogger<AssemblyEmitPass>.Instance).ExecuteAsync(ctx);
+        return ctx;
+    }
+
+    private static async Task<string[]> RunCollatzAndGetLines(CompilationContext ctx)
+    {
+        var launcher = ctx.LauncherPath ?? ctx.AssemblyPath!;
+        System.Diagnostics.ProcessStartInfo psi;
+        if (System.IO.File.Exists(launcher) && IsExecutable(launcher))
+            psi = new(launcher) { RedirectStandardOutput = true, RedirectStandardInput = true, UseShellExecute = false };
+        else
+            psi = new("dotnet", launcher) { RedirectStandardOutput = true, RedirectStandardInput = true, UseShellExecute = false };
+
+        using var p = System.Diagnostics.Process.Start(psi)!;
+        await p.StandardInput.WriteLineAsync(ctx.TestInput);
+        p.StandardInput.Close();
+        var stdout = await p.StandardOutput.ReadToEndAsync();
+        await p.WaitForExitAsync();
+        return stdout.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+                     .Select(l => l.TrimEnd('\r')).ToArray();
+    }
+
+    [Fact]
+    public async Task Collatz_From6_Produces9Lines()
+    {
+        var ctx   = await CompileCollatz("6");
+        var lines = await RunCollatzAndGetLines(ctx);
+        Assert.Equal(9, lines.Length);
+    }
+
+    [Fact]
+    public async Task Collatz_From6_CorrectSequence()
+    {
+        var ctx   = await CompileCollatz("6");
+        var lines = await RunCollatzAndGetLines(ctx);
+        Assert.Equal(["6","3","10","5","16","8","4","2","1"], lines);
+    }
+
+    [Fact]
+    public async Task Collatz_From1_PrintsOnly1()
+    {
+        var ctx   = await CompileCollatz("1");
+        var lines = await RunCollatzAndGetLines(ctx);
+        Assert.Equal(["1"], lines);
     }
 }

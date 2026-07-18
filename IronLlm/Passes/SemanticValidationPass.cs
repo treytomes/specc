@@ -139,10 +139,13 @@ public class SemanticValidationPass : ICompilerPass
             noDangling,
             noDangling ? null : $"{danglingEdges.Count} edge(s) reference unknown node IDs"));
 
-        // 4. Every BranchNode has at least one outgoing TrueBranch edge
+        // 4. Every BranchNode has at least one outgoing TrueBranch edge OR Contains-edge assign body
+        //    (true_assign: branches in while: loops use Contains edges instead of TrueBranch).
         var branchNodes         = nodes.OfType<BranchNode>().ToList();
         var branchesWithoutTrue = branchNodes
-            .Where(b => !edges.Any(e => e.From == b.Id && e.Type == EdgeType.TrueBranch))
+            .Where(b => !edges.Any(e => e.From == b.Id && e.Type == EdgeType.TrueBranch)
+                     && !edges.Any(e => e.From == b.Id && e.Type == EdgeType.Contains
+                                     && nodes.OfType<AssignNode>().Any(a => a.Id == e.To)))
             .ToList();
         var branchesOk = branchesWithoutTrue.Count == 0;
         checks.Add(new ValidationCheck("branch nodes have true-branch edge",
@@ -259,8 +262,12 @@ public class SemanticValidationPass : ICompilerPass
             .Where(b => b.SuccessorTrue == null && b.SuccessorFalse == null)
             .Select(b => b.Label)
             .ToHashSet();
+        // check_* blocks with no SuccessorFalse are unconditional jumps (e.g. check_default in
+        // a while loop's else branch) — they legitimately carry no instructions.
         var emptyNonExitBlocks = blocks
-            .Where(b => !noSuccessorLabels.Contains(b.Label) && b.Instructions.Count == 0)
+            .Where(b => !noSuccessorLabels.Contains(b.Label)
+                     && b.Instructions.Count == 0
+                     && !(b.Label.StartsWith("check_") && b.SuccessorFalse == null))
             .Select(b => b.Label)
             .ToList();
         var nonExitHaveInstructions = emptyNonExitBlocks.Count == 0;

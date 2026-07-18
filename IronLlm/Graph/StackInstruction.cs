@@ -10,8 +10,8 @@ public enum OpCode
     Ceq,     // compare equal
     Brfalse, // branch if false (pops bool)
     Br,      // unconditional branch
-    LdstrS,  // load string constant
-    Call,    // call method
+    LdstrS,   // load string constant
+    Intrinsic, // call named intrinsic; operand = IntrinsicLibrary name
     Ret,
     Label,   // pseudo-op: define label
     Cgt,     // compare greater-than
@@ -23,10 +23,10 @@ public enum OpCode
     StlocA,    // store array local; operand = array name
     LdelemI4,  // load int element from array (pops arr ref and index, pushes int)
     StelemI4,  // store int element into array (pops arr ref, index, value)
-    ReadLine,  // call Console.ReadLine(), push string result
     LdlocStr,  // load string local; operand = variable name
     StlocStr,  // store string local; operand = variable name
-    Concat,    // call string.Concat(string, string); pops two strings, pushes concatenated string
+    Clt,       // compare less-than; pops two ints, pushes 1 if second < top
+    Div,       // integer divide; pops two ints, pushes quotient
 }
 
 public record StackInstruction(OpCode Op, string? Operand = null);

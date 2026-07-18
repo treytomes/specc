@@ -19,6 +19,7 @@ namespace IronLlm.Graph;
 [JsonDerivedType(typeof(ArithmeticNode), "Arithmetic")]
 [JsonDerivedType(typeof(AssignNode),     "Assign")]
 [JsonDerivedType(typeof(InputNode),      "Input")]
+[JsonDerivedType(typeof(WhileLoopNode),  "WhileLoop")]
 public abstract record Node(Guid Id, string Label);
 
 public record ProgramNode(Guid Id, string Label, string Name) : Node(Id, Label);
@@ -27,7 +28,7 @@ public record BranchNode(Guid Id, string Label, string Condition) : Node(Id, Lab
 public record ConstantNode(Guid Id, string Label, int Value) : Node(Id, Label);
 public record PrintNode(Guid Id, string Label, string Template) : Node(Id, Label);
 public record ModuloNode(Guid Id, string Label, int Divisor) : Node(Id, Label);
-public record ComparisonNode(Guid Id, string Label, string Op) : Node(Id, Label);
+public record ComparisonNode(Guid Id, string Label, string Op, int Value = 0) : Node(Id, Label);
 public record VariableNode(Guid Id, string Label, string Name, string Type, int? InitialValue = null) : Node(Id, Label);
 public record AssertionNode(Guid Id, string Label, int Iteration, string Expected) : Node(Id, Label);
 
@@ -50,5 +51,10 @@ public record ArithmeticNode(Guid Id, string Label, string Op) : Node(Id, Label)
 public record AssignNode(Guid Id, string Label, string Target, string Op, string Left, string? Right = null)
     : Node(Id, Label);
 
-// Reads a line from stdin into a named string variable.
-public record InputNode(Guid Id, string Label, string Name) : Node(Id, Label);
+// Reads a line from stdin into a named variable. Type is "string" or "int".
+public record InputNode(Guid Id, string Label, string Name, string Type = "string") : Node(Id, Label);
+
+// Loop that runs while Variable Op Value is true (e.g. n != 1).
+// Body nodes are connected via EdgeType.Contains edges from this node.
+public record WhileLoopNode(Guid Id, string Label, string Variable, string Op, int Value)
+    : Node(Id, Label);

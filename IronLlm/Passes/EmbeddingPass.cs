@@ -75,7 +75,9 @@ public class EmbeddingPass : ICompilerPass
         LoopNode l       => $"Iterates integers sequentially from {l.From} to {l.To}.",
         BranchNode b     => $"A conditional branch: {b.Condition.Replace('_', ' ')}.",
         ModuloNode m     => $"Computes the remainder after division by {m.Divisor}.",
-        ComparisonNode c => $"Compares two values using the {c.Op} operator.",
+        ComparisonNode c => c.Value != 0
+            ? $"Compares a value to {c.Value} using the {c.Op} operator."
+            : $"Compares two values using the {c.Op} operator.",
         PrintNode pr     => $"Outputs the value \"{pr.Template}\" to the console.",
         VariableNode v   => $"A variable named {v.Name} of type {v.Type}.",
         ConstantNode c   => $"The integer constant {c.Value}.",

@@ -235,7 +235,7 @@ public class SemanticNormalizationPass : ICompilerPass
         ModuloNode m      => $"Modulo:{m.Divisor}",
         VariableNode v    => $"Var:{v.Name}",
         ConstantNode c    => $"Constant:{c.Value}",
-        ComparisonNode c  => $"Comparison:{c.Op}",
+        ComparisonNode c  => c.Value != 0 ? $"Comparison:{c.Op}:{c.Value}" : $"Comparison:{c.Op}",
         ArrayNode a       => $"Array:{a.Name}[{a.Size}]",
         IndexNode ix      => $"Index:{ix.ArrayName}[{ix.IndexExpr}]",
         SwapNode sw       => $"Swap:{sw.ArrayName}[{sw.FromExpr}↔{sw.ToExpr}]",

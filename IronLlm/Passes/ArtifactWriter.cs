@@ -49,6 +49,15 @@ public static class ArtifactWriter
                 }), ctx, logger);
                 break;
 
+            case NodeMlpPass:
+                await WriteJson("03a-refined-embeddings.json", ctx.Embeddings.Select(e => new
+                {
+                    nodeId    = e.NodeId,
+                    nodeLabel = e.NodeLabel,
+                    vector    = e.Vector,
+                }), ctx, logger);
+                break;
+
             case CfgPass:
                 await WriteJson("04-cfg.json", ctx.CfgBlocks, ctx, logger);
                 break;

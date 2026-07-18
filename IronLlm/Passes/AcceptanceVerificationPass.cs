@@ -38,6 +38,7 @@ public class AcceptanceVerificationPass : ICompilerPass
         var sw     = Stopwatch.StartNew();
         var stdout = await RunAsync(launcher, context.AssemblyPath, context.TestInput);
         var lines  = stdout.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        context.VerificationOutput = lines.Select(l => l.TrimEnd('\r')).ToArray();
 
         if (lines.Length != assertions.Count)
             throw new AcceptanceFailureException(
@@ -105,7 +106,36 @@ public class AcceptanceVerificationPass : ICompilerPass
             process.StandardInput.Close();
         }
 
-        var stdout = await process.StandardOutput.ReadToEndAsync();
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        // Read stdout line-by-line with a hard cap so an infinite-loop binary can't
+        // overflow the StringBuilder or block forever.
+        const int maxLines = 100_000;
+        var outputLines = new List<string>(capacity: 256);
+        try
+        {
+            while (!process.StandardOutput.EndOfStream)
+            {
+                cts.Token.ThrowIfCancellationRequested();
+                var line = await process.StandardOutput.ReadLineAsync(cts.Token);
+                if (line == null) break;
+                outputLines.Add(line);
+                if (outputLines.Count >= maxLines)
+                {
+                    process.Kill(entireProcessTree: true);
+                    throw new AcceptanceFailureException(
+                        $"Binary produced more than {maxLines} output lines — likely an infinite loop. " +
+                        $"Check the extracted spec.");
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            process.Kill(entireProcessTree: true);
+            throw new AcceptanceFailureException(
+                "Binary did not complete within 30 seconds — likely an infinite loop. " +
+                "Check the extracted spec.");
+        }
+
         await process.WaitForExitAsync();
 
         if (process.ExitCode != 0)
@@ -115,6 +145,6 @@ public class AcceptanceVerificationPass : ICompilerPass
                 $"Process exited with code {process.ExitCode}. stderr: {stderr.Trim()}");
         }
 
-        return stdout;
+        return string.Join("\n", outputLines);
     }
 }

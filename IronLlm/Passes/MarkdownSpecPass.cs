@@ -34,11 +34,19 @@ public class MarkdownSpecPass : ICompilerPass
         var markdown = await File.ReadAllTextAsync(context.SpecPath);
         _logger.LogInformation("Extracting .spec from {Path} ({Chars} chars)", context.SpecPath, markdown.Length);
 
-        var extracted = await ExtractSpecAsync(markdown);
+        var tags      = await ClassifyAsync(markdown);
+        _logger.LogInformation("Classifier selected construct families: [{Tags}]", string.Join(", ", tags));
+        var extracted = await ExtractSpecAsync(markdown, tags);
 
         if (extracted.StartsWith("ERROR:", StringComparison.OrdinalIgnoreCase))
             throw new CompilationException(
                 $"LLM could not extract a .spec from the Markdown document: {extracted}");
+
+        var missing = ConsistencyMissing(tags, extracted);
+        if (missing.Count > 0)
+            _logger.LogWarning(
+                "Extraction may be incomplete — classifier expected [{Tags}] but spec is missing: {Missing}",
+                string.Join(", ", tags), string.Join(", ", missing));
 
         ValidateExtracted(extracted, context.SpecPath);
 
@@ -141,16 +149,65 @@ public class MarkdownSpecPass : ICompilerPass
         }
     }
 
-    private async Task<string> ExtractSpecAsync(string markdown)
+    private static readonly JsonElement ClassifierSchema = JsonDocument.Parse("""
+        { "type": "array", "items": { "type": "string" } }
+        """).RootElement;
+
+    private static readonly ChatOptions ClassifierOptions = new()
+    {
+        ResponseFormat = ChatResponseFormat.ForJsonSchema(ClassifierSchema, "ConstructFamilies", null),
+    };
+
+    private async Task<string[]> ClassifyAsync(string markdown)
     {
         var messages = new List<ChatMessage>
         {
-            new(ChatRole.System, SpecSystemPrompt),
+            new(ChatRole.System, ClassifierSystemPrompt),
+            new(ChatRole.User, markdown),
+        };
+
+        try
+        {
+            var response = await _chat.GetResponseAsync(messages, ClassifierOptions);
+            var text = response.Text?.Trim() ?? "[]";
+            var opts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+            var tags = JsonSerializer.Deserialize<string[]>(text, opts) ?? [];
+            // Guarantee at least a minimal set so extraction never gets an empty prompt.
+            if (tags.Length == 0)
+                tags = ["loop", "branch"];
+            return tags;
+        }
+        catch
+        {
+            _logger.LogWarning("Classifier call failed — falling back to full construct set");
+            return ["loop", "branch", "arithmetic", "input", "array", "while"];
+        }
+    }
+
+    private async Task<string> ExtractSpecAsync(string markdown, string[] tags)
+    {
+        var systemPrompt = SpecConstructLibrary.Assemble(tags);
+        var messages = new List<ChatMessage>
+        {
+            new(ChatRole.System, systemPrompt),
             new(ChatRole.User, markdown),
         };
 
         var response = await _chat.GetResponseAsync(messages);
-        return response.Text?.Trim() ?? "";
+        return StripFences(response.Text?.Trim() ?? "");
+    }
+
+    // Strip markdown code fences that some models emit despite being told not to.
+    private static string StripFences(string text)
+    {
+        var lines  = text.Split('\n');
+        var start  = 0;
+        var end    = lines.Length - 1;
+        if (start <= end && lines[start].TrimStart().StartsWith("```"))
+            start++;
+        if (end >= start && lines[end].TrimStart().StartsWith("```"))
+            end--;
+        return string.Join('\n', lines[start..(end + 1)]).Trim();
     }
 
     private static readonly JsonElement CriteriaSchema = JsonDocument.Parse("""
@@ -237,6 +294,21 @@ public class MarkdownSpecPass : ICompilerPass
         return assertions;
     }
 
+    // Returns the list of construct keywords that were expected (per classifier tags) but
+    // are absent from the extracted spec text. Empty list means consistent.
+    public static List<string> ConsistencyMissing(string[] tags, string specText)
+    {
+        var missing = new List<string>();
+        if (tags.Contains("while")      && !specText.Contains("while:"))          missing.Add("while:");
+        if (tags.Contains("arithmetic") && !specText.Contains("assign:"))         missing.Add("assign:");
+        if (tags.Contains("input")      && !specText.Contains("source: stdin"))   missing.Add("source: stdin");
+        if (tags.Contains("array")      && !specText.Contains("initial_value:")
+                                        && !specText.Contains("array[int]"))      missing.Add("array construct");
+        if (tags.Contains("branch")     && !specText.Contains("branch:"))         missing.Add("branch:");
+        if (tags.Contains("loop")       && !specText.Contains("loop:"))           missing.Add("loop:");
+        return missing;
+    }
+
     // Runs the SemanticGraphPass parser against the extracted text to confirm it
     // produces a non-trivial graph before we accept the LLM output.
     // If the spec contains constructs outside the current flat-loop format (e.g. nested
@@ -305,11 +377,13 @@ public class MarkdownSpecPass : ICompilerPass
         return result;
     }
 
-    // Parses "## Test Input" section: the first non-empty line after the heading is the test input.
+    // Parses "## Test Input" section: all non-empty lines, joined with newlines, so multi-line
+    // programs (e.g. Calculator) can receive multiple inputs in one TestInput string.
     private static string? ParseTestInputBlock(string markdown)
     {
         var lines     = markdown.Split('\n');
         var inSection = false;
+        var collected = new List<string>();
         foreach (var line in lines)
         {
             var trimmed = line.TrimEnd('\r');
@@ -318,69 +392,37 @@ public class MarkdownSpecPass : ICompilerPass
             if (!inSection) continue;
             if (trimmed.StartsWith('#')) break; // next section
             if (!string.IsNullOrWhiteSpace(trimmed))
-                return trimmed.Trim();
+                collected.Add(trimmed.Trim());
         }
-        return null;
+        return collected.Count == 0 ? null : string.Join("\n", collected);
     }
 
-    private const string SpecSystemPrompt = """
-        You are a compiler front-end. Your job is to read a program specification written
-        in Markdown and extract it as a structured .spec file.
+    private const string ClassifierSystemPrompt = """
+        You are a program classifier. Read the program description and return a JSON array
+        of construct families it requires. Choose from: "loop", "branch", "arithmetic",
+        "input", "array", "while". Include a tag if there is any chance the construct is
+        needed — it is better to include an extra tag than to miss one.
 
-        The .spec format is:
+        Tag meanings:
+          "loop"       — fixed iteration range (from N to M)
+          "branch"     — conditional output based on divisibility or comparison
+          "arithmetic" — arithmetic assignments: multiply, divide, add, subtract
+          "input"      — read a value from the user at runtime
+          "array"      — fixed-size list of values
+          "while"      — repeat until a condition is met; number of iterations not known in advance;
+                         phrases like "keep going until", "repeat until", "go back to step N",
+                         "loop until N equals", "stop when" all indicate "while"
 
-          program: <name>
+        Examples:
+          "FizzBuzz from 1 to 100, print Fizz/Buzz"              → ["loop","branch"]
+          "Fibonacci first 10 terms"                             → ["loop","arithmetic"]
+          "Ask name, greet user"                                 → ["input"]
+          "Bubble sort an array of 10 ints"                      → ["loop","array"]
+          "Read int, compare to 42, print hint"                  → ["input","branch"]
+          "Read a number. Repeat: print it, halve if even, else×3+1. Stop when 1." → ["input","arithmetic","while"]
+          "Keep dividing until you reach 1"                      → ["input","arithmetic","while"]
 
-          loop:
-            from: <int>
-            to: <int>
-
-          branch:
-            condition: <snake_case_name>
-            divisor: <int>          # omit if no modulo check
-            true_output: "<string>" # quoted string or {variable}
-
-          variable:
-            name: <identifier>
-            type: int | string
-            initial_value: <int>    # optional; omit if not explicitly initialized
-            source: stdin           # optional; omit unless the variable is read from user input
-
-          print: "<string or {variable}>"   # unconditional output line (no branch needed)
-
-          assign:
-            target: <identifier>
-            op: mul                 # mul, add, sub, or copy
-            left: {variable_or_int}
-            right: {variable_or_int} # omit entirely when op is copy
-
-        The "copy" op copies one variable into another. It has no right operand:
-          assign:
-            target: tmp
-            op: copy
-            left: {a}
-
-        For programs that read input and print strings in sequence, use print: and variable:
-        (with source: stdin) — NO loop:, NO branch:. Example:
-          program: Greetings
-          print: "Hello! What is your name?"
-          variable:
-            name: user_name
-            type: string
-            source: stdin
-          print: "{user_name}"
-
-        Rules:
-        1. Output ONLY the .spec content — no explanation, no markdown fences.
-        2. Use snake_case for all condition names.
-        3. Include a "default" branch (no divisor) for the fallback output.
-        4. The variable block must name the loop counter (e.g. n).
-        5. Use assign: blocks for arithmetic (multiply, add, subtract, copy). Do NOT use branch/divisor for arithmetic.
-        6. For {variable} operands use braces: {a}. For integer constants use the number directly: 7.
-        7. Do NOT add an assign: block that increments the loop counter (e.g. "assign n add {n} 1"). The loop counter is incremented automatically.
-        8. For programs with no loop: use print: for unconditional output. Do NOT use branch: for unconditional output.
-        9. If the document describes a program that cannot be expressed in this format,
-           output a single line: ERROR: <reason>
+        Return only the JSON array.
         """;
 
     private const string CriteriaSystemPrompt = """

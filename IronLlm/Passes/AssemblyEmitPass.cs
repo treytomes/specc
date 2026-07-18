@@ -106,9 +106,6 @@ public class AssemblyEmitPass : ICompilerPass
             if (instr.Op == IrOp.Label && instr.Operand != null)
                 labels[instr.Operand] = il.DefineLabel();
 
-        var writeLineInt    = typeof(Console).GetMethod("WriteLine", [typeof(int)])!;
-        var writeLineString = typeof(Console).GetMethod("WriteLine", [typeof(string)])!;
-
         foreach (var instr in context.StackIr)
         {
             switch (instr.Op)
@@ -137,14 +134,6 @@ public class AssemblyEmitPass : ICompilerPass
                 case IrOp.StlocStr:
                     il.Emit(OpCodes.Stloc, localBuilders[instr.Operand!]);
                     break;
-                case IrOp.ReadLine:
-                    var readLine = typeof(Console).GetMethod("ReadLine", Type.EmptyTypes)!;
-                    il.EmitCall(OpCodes.Call, readLine, null);
-                    break;
-                case IrOp.Concat:
-                    var concat = typeof(string).GetMethod("Concat", [typeof(string), typeof(string)])!;
-                    il.EmitCall(OpCodes.Call, concat, null);
-                    break;
                 case IrOp.Add:
                     il.Emit(OpCodes.Add);
                     break;
@@ -157,11 +146,35 @@ public class AssemblyEmitPass : ICompilerPass
                 case IrOp.Rem:
                     il.Emit(OpCodes.Rem);
                     break;
+                case IrOp.Div:
+                    il.Emit(OpCodes.Div);
+                    break;
                 case IrOp.Ceq:
                     il.Emit(OpCodes.Ceq);
                     break;
                 case IrOp.Cgt:
                     il.Emit(OpCodes.Cgt);
+                    break;
+                case IrOp.Clt:
+                    il.Emit(OpCodes.Clt);
+                    break;
+                case IrOp.Intrinsic:
+                    var descriptor = IronLlm.Graph.IntrinsicLibrary.Get(instr.Operand!);
+                    foreach (var step in descriptor.Steps)
+                    {
+                        switch (step)
+                        {
+                            case IronLlm.Graph.StaticCall sc:
+                                il.EmitCall(OpCodes.Call, sc.Method, null);
+                                break;
+                            case IronLlm.Graph.VirtualCall vc:
+                                il.EmitCall(OpCodes.Callvirt, vc.Method, null);
+                                break;
+                            case IronLlm.Graph.StaticGet sg:
+                                il.EmitCall(OpCodes.Call, sg.Property.GetGetMethod()!, null);
+                                break;
+                        }
+                    }
                     break;
                 case IrOp.Newarr:
                     il.Emit(OpCodes.Newarr, typeof(int));
@@ -183,10 +196,6 @@ public class AssemblyEmitPass : ICompilerPass
                     break;
                 case IrOp.LdstrS:
                     il.Emit(OpCodes.Ldstr, instr.Operand!);
-                    break;
-                case IrOp.Call:
-                    var m = instr.Operand!.Contains("string") ? writeLineString : writeLineInt;
-                    il.EmitCall(OpCodes.Call, m, null);
                     break;
                 case IrOp.Ret:
                     il.Emit(OpCodes.Ret);

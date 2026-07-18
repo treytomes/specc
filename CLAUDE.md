@@ -77,21 +77,39 @@ loop:
 branch:
   condition: <snake_case>
   divisor: <int>           # omit for the default branch
+  compare: lt | gt | eq    # runtime comparison (alternative to divisor:)
+  value: <int>             # integer rhs when using compare:
   true_output: "<string>"  # quoted string, or {variable}
 
 variable:
   name: <identifier>
   type: <type>
   initial_value: <int>     # optional; sets the variable before the loop
+  source: stdin            # optional; read from stdin at runtime
 
 assign:
   target: <identifier>
-  op: mul | add | sub | copy
+  op: mul | add | sub | div | copy
   left: {variable} | <int>
   right: {variable} | <int> # omit when op is copy
+
+while:
+  variable: <identifier>
+  condition: ne | eq | lt | gt
+  value: <int>
+
+# Inside a while: body, branch: blocks may use true_assign: instead of true_output:
+branch:
+  condition: <snake_case>
+  divisor: <int>             # optional; modulo check
+  true_assign:               # one or more; assign body executed when condition is true
+    target: <identifier>
+    op: mul | add | sub | div | copy
+    left: {variable} | <int>
+    right: {variable} | <int>
 ```
 
-Branches are evaluated in declaration order. The `default` branch (no `divisor`) provides the fallback output. `assign:` blocks express arithmetic and variable copies. When `assign:` blocks are present, all `branch:`/`divisor:` entries are treated as LLM noise and dropped by `CfgPass`. Alternatively, pass a `.md` file and `MarkdownSpecPass` will extract the spec from prose.
+Branches are evaluated in declaration order. The `default` branch (no `divisor`) provides the fallback output. `assign:` blocks express arithmetic and variable copies. When `assign:` blocks are present, all `branch:`/`divisor:` entries are treated as LLM noise and dropped by `CfgPass`. For comparison-based branching (no loop), use `compare:` + `value:` instead of `divisor:` — `CfgPass` dispatches to `LowerComparisonBranch`. Alternatively, pass a `.md` file and `MarkdownSpecPass` will extract the spec from prose.
 
 ## Running
 
@@ -136,6 +154,9 @@ The compiled executable is written to `<artifacts-dir>/<ProgramName>` and is dir
 | SelectionSort | 8-element selection sort | 8/8 assertions pass |
 | Multiples | Loop 1–12, print n×7 each iteration | 12/12 assertions pass |
 | Fibonacci | Print first 10 Fibonacci numbers via a, b, tmp variables | 10/10 assertions pass |
+| Guesser | Read int from stdin, compare to 42, print hint | Pass (3/3 test cases) |
+| Calculator | Read two ints from stdin, print their sum | Pass (3/3 test cases) |
+| Collatz | Read int from stdin, run Collatz sequence, while loop + div/mul/add | Pass (3/3 test cases) |
 
 ## Upcoming work
 
@@ -143,7 +164,14 @@ See `specs/incomplete/` for detailed design docs:
 
 | Spec | Title | Notes |
 |------|-------|-------|
-| 04 | Differentiable node MLPs | Gradient-based graph structure refinement |
+| 41 | Node MLP training loop | Offline contrastive + type-classification loss over `Contains`/`DependsOn` edges only; CFG back-edges excluded to avoid recurrent gradient paths |
 | 20 | Roadmap to self-hosting | Long-horizon exploration |
-| 21 | Direct graph extraction | Skip MarkdownSpecPass for well-formed inputs |
+| 21 | Direct graph extraction | Skip MarkdownSpecPass for well-formed inputs — deferred, needs ≥7B model |
 | 29 | Greetings example | `InputNode`, string variables, linear CFG, stdin acceptance testing |
+| 35 | Embedding geometry validation | `scripts/geometry.py` — 2/3 cluster checks pass; BubbleSort↔SelectionSort narrowly fails vs BubbleSort↔FizzBuzz (0.928 vs 0.932) |
+| 37 | GuessingGame example | Blockers: `random:`, `compare_with: {var}`, `while:` loop |
+| 40 | Construct library worked examples | Add a minimal complete `.spec` example to each `SpecConstructLibrary` section to improve structural reliability |
+
+## Notes
+
+- **Collatz pipeline re-run pending**: Spec 36 (construct router) is now implemented. Delete `examples/Collatz/artifacts/` and re-run `scripts/run.sh examples/Collatz/Collatz.md` to test whether the `while` family tag gives ministral-3b enough signal to produce a correct extraction.

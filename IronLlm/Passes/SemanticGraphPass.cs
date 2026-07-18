@@ -47,23 +47,89 @@ public class SemanticGraphPass : ICompilerPass
         ProgramNode? program = null;
         string? pendingBranchCondition = null;
         int? pendingBranchDivisor = null;
+        string? pendingBranchCompare = null;
+        int? pendingBranchValue = null;
         BranchNode? lastBranch = null;
+
+        // while: loop state
+        WhileLoopNode? whileNode = null;
+        string? whileVariable = null, whileCondition = null;
+        int? whileValue = null;
+        bool inWhile = false;
+
+        void FlushWhile()
+        {
+            if (whileVariable == null || whileCondition == null || !whileValue.HasValue) return;
+            whileNode = new WhileLoopNode(
+                Guid.NewGuid(),
+                $"WhileLoop:{whileVariable}{whileCondition}{whileValue}",
+                whileVariable, whileCondition, whileValue.Value);
+            graph.Add(whileNode);
+            if (program != null) graph.Connect(program.Id, whileNode.Id, EdgeType.Contains);
+            whileVariable = null; whileCondition = null; whileValue = null;
+        }
+
+        // true_assign: state — assign body for a branch condition (sequentially executed)
+        bool inTrueAssign = false;
+        string? trueAssignTarget = null, trueAssignOp = null, trueAssignLeft = null, trueAssignRight = null;
+
+        void FlushTrueAssign()
+        {
+            if (trueAssignTarget == null || trueAssignOp == null || trueAssignLeft == null) return;
+            if (trueAssignOp != "copy" && trueAssignRight == null) return;
+            var label = trueAssignOp == "copy"
+                ? $"Assign:{trueAssignTarget}=copy({trueAssignLeft})"
+                : $"Assign:{trueAssignTarget}={trueAssignOp}({trueAssignLeft},{trueAssignRight})";
+            var assign = new AssignNode(Guid.NewGuid(), label, trueAssignTarget, trueAssignOp, trueAssignLeft, trueAssignRight);
+            graph.Add(assign);
+            // Connect to the enclosing branch as a sequential body step.
+            if (lastBranch != null)
+                graph.Connect(lastBranch.Id, assign.Id, EdgeType.Contains);
+            trueAssignTarget = null; trueAssignOp = null; trueAssignLeft = null; trueAssignRight = null;
+        }
 
         // Inline stdin-variable state — parsed and connected in spec order so that
         // Contains edges on the ProgramNode reflect the authorial sequence.
         bool inInlineVar = false;
         string? inlineVarName = null, inlineVarType = null, inlineVarSource = null;
 
+        // For linear (no-loop) programs, all Contains-edge nodes are deferred until after
+        // the main loop so that declaration order is preserved across all node types.
+        // PrintNodes are added immediately to the graph (their IDs are needed for TrueBranch
+        // edges) but their Contains edges are deferred.
+        var linearContainsOrder = new List<Node>();
+        bool hasLoop = false; // set after BuildLoopNode
+
         void FlushInlineVar()
         {
             if (inlineVarName == null || inlineVarSource == null) return;
             if (inlineVarSource.Equals("stdin", StringComparison.OrdinalIgnoreCase))
             {
-                var inp = new InputNode(Guid.NewGuid(), $"Input:{inlineVarName}", inlineVarName);
+                var varType = inlineVarType ?? "string";
+                var inp = new InputNode(Guid.NewGuid(), $"Input:{inlineVarName}", inlineVarName, varType);
                 graph.Add(inp);
-                if (program != null) graph.Connect(program.Id, inp.Id, EdgeType.Contains);
+                // Defer Contains edge; emitted in order after the loop for linear programs.
+                // Loop programs emit the edge immediately via the existing code path.
+                linearContainsOrder.Add(inp);
             }
             inlineVarName = null; inlineVarType = null; inlineVarSource = null;
+        }
+
+        // Inline assign state — collects assigns in spec order; flushed after the main loop.
+        bool inInlineAssign = false;
+        string? assignTarget = null, assignOp = null, assignLeft = null, assignRight = null;
+
+        void FlushInlineAssign()
+        {
+            if (assignTarget == null || assignOp == null || assignLeft == null) return;
+            if (assignOp != "copy" && assignRight == null) return;
+            var label = assignOp == "copy"
+                ? $"Assign:{assignTarget}=copy({assignLeft})"
+                : $"Assign:{assignTarget}={assignOp}({assignLeft},{assignRight})";
+            var assign = new AssignNode(Guid.NewGuid(), label, assignTarget, assignOp, assignLeft, assignRight);
+            graph.Add(assign);
+            linearContainsOrder.Add(assign);
+            assignTarget = null; assignOp = null; assignLeft = null; assignRight = null;
         }
 
         foreach (var line in lines)
@@ -71,21 +137,60 @@ public class SemanticGraphPass : ICompilerPass
             if (line.StartsWith("program:"))
             {
                 FlushInlineVar(); inInlineVar = false;
+                FlushInlineAssign(); inInlineAssign = false;
+                FlushTrueAssign(); inTrueAssign = false;
                 var name = line["program:".Length..].Trim();
                 program = new ProgramNode(Guid.NewGuid(), $"Program:{name}", name);
                 graph.Add(program);
             }
+            else if (line == "while:")
+            {
+                FlushInlineVar(); inInlineVar = false;
+                FlushInlineAssign(); inInlineAssign = false;
+                FlushTrueAssign(); inTrueAssign = false;
+                inWhile = true;
+            }
             else if (line.StartsWith("branch:"))
             {
                 FlushInlineVar(); inInlineVar = false;
+                FlushInlineAssign(); inInlineAssign = false;
+                FlushTrueAssign(); inTrueAssign = false;
+                if (inWhile) { FlushWhile(); inWhile = false; }
                 pendingBranchCondition = null;
                 pendingBranchDivisor = null;
+                pendingBranchCompare = null;
+                pendingBranchValue = null;
                 lastBranch = null;
             }
             else if (line == "variable:")
             {
                 FlushInlineVar();
+                FlushInlineAssign(); inInlineAssign = false;
                 inInlineVar = true;
+            }
+            else if (line == "assign:")
+            {
+                FlushInlineVar(); inInlineVar = false;
+                FlushInlineAssign();
+                inInlineAssign = true;
+            }
+            else if (line == "true_assign:")
+            {
+                FlushTrueAssign();
+                inTrueAssign = true;
+            }
+            else if (inWhile && line.StartsWith("variable:"))
+            {
+                whileVariable = line["variable:".Length..].Trim();
+            }
+            else if (inWhile && line.StartsWith("condition:"))
+            {
+                whileCondition = line["condition:".Length..].Trim();
+            }
+            else if (inWhile && line.StartsWith("value:"))
+            {
+                if (int.TryParse(line["value:".Length..].Trim(), out var wv))
+                    whileValue = wv;
             }
             else if (inInlineVar && line.StartsWith("name:"))
             {
@@ -99,38 +204,127 @@ public class SemanticGraphPass : ICompilerPass
             {
                 inlineVarSource = line["source:".Length..].Trim();
             }
-            else if (inInlineVar && (line.StartsWith("print:") || line.StartsWith("assign:") || line.StartsWith("loop:")))
+            else if (inInlineVar && (line.StartsWith("print:") || line.StartsWith("loop:")))
             {
                 FlushInlineVar(); inInlineVar = false;
                 // fall through to handle the line below
             }
+            else if (inInlineAssign && line.StartsWith("target:"))
+            {
+                assignTarget = line["target:".Length..].Trim();
+            }
+            else if (inInlineAssign && line.StartsWith("op:"))
+            {
+                assignOp = line["op:".Length..].Trim();
+            }
+            else if (inInlineAssign && line.StartsWith("left:"))
+            {
+                assignLeft = line["left:".Length..].Trim();
+            }
+            else if (inInlineAssign && line.StartsWith("right:"))
+            {
+                assignRight = line["right:".Length..].Trim();
+            }
+            else if (inInlineAssign && (line.StartsWith("print:") || line.StartsWith("loop:")))
+            {
+                FlushInlineAssign(); inInlineAssign = false;
+                // fall through to handle the line below
+            }
+            else if (inTrueAssign && line.StartsWith("target:"))
+            {
+                trueAssignTarget = line["target:".Length..].Trim();
+            }
+            else if (inTrueAssign && line.StartsWith("op:"))
+            {
+                trueAssignOp = line["op:".Length..].Trim();
+            }
+            else if (inTrueAssign && line.StartsWith("left:"))
+            {
+                trueAssignLeft = line["left:".Length..].Trim();
+            }
+            else if (inTrueAssign && line.StartsWith("right:"))
+            {
+                trueAssignRight = line["right:".Length..].Trim();
+            }
             else if (line.StartsWith("condition:"))
             {
                 pendingBranchCondition = line["condition:".Length..].Trim();
+                // Eagerly create the BranchNode so true_assign: can connect to it even
+                // when there is no true_output: (assign-body branches in while loops).
+                lastBranch = new BranchNode(Guid.NewGuid(), $"Branch:{pendingBranchCondition}", pendingBranchCondition);
+                graph.Add(lastBranch);
+                var branchContainer = whileNode as Node ?? program;
+                if (branchContainer != null)
+                    graph.Connect(branchContainer.Id, lastBranch.Id, EdgeType.Contains);
             }
             else if (line.StartsWith("divisor:"))
             {
                 if (int.TryParse(line["divisor:".Length..].Trim(), out var d) && d > 0)
+                {
                     pendingBranchDivisor = d;
+                    // Eagerly wire the ModuloNode when lastBranch already exists (true_assign:
+                    // branches have no true_output: to trigger the deferred path).
+                    if (lastBranch != null)
+                    {
+                        var modNode = new ModuloNode(Guid.NewGuid(), $"Modulo:{d}", d);
+                        graph.Add(modNode);
+                        graph.Connect(lastBranch.Id, modNode.Id, EdgeType.DependsOn);
+                        pendingBranchDivisor = null; // consumed; don't emit again in true_output:
+                    }
+                }
                 // divisor: 0 or non-integer — LLM placeholder for array programs; ignore.
+            }
+            else if (line.StartsWith("compare:"))
+            {
+                pendingBranchCompare = line["compare:".Length..].Trim();
+            }
+            else if (line.StartsWith("value:"))
+            {
+                if (int.TryParse(line["value:".Length..].Trim(), out var v))
+                    pendingBranchValue = v;
             }
 
             if (line.StartsWith("print:") && !line.StartsWith("program:"))
             {
+                FlushInlineAssign(); inInlineAssign = false;
+                if (inWhile) { FlushWhile(); inWhile = false; }
                 var template = line["print:".Length..].Trim().Trim('"');
                 var printNode = new PrintNode(Guid.NewGuid(), $"Print:{template}", template);
                 graph.Add(printNode);
-                if (program != null) graph.Connect(program.Id, printNode.Id, EdgeType.Contains);
+                if (whileNode != null)
+                    // Inside a while body: connect to the WhileLoopNode.
+                    graph.Connect(whileNode.Id, printNode.Id, EdgeType.Contains);
+                else
+                    // Defer Contains edge for linear programs.
+                    linearContainsOrder.Add(printNode);
             }
             else if (line.StartsWith("true_output:"))
             {
                 var output = line["true_output:".Length..].Trim().Trim('"');
                 var condition = pendingBranchCondition ?? "default";
 
-                lastBranch = new BranchNode(Guid.NewGuid(), $"Branch:{condition}", condition);
-                graph.Add(lastBranch);
+                // BranchNode may already exist (created eagerly in condition: handler).
+                if (lastBranch == null)
+                {
+                    lastBranch = new BranchNode(Guid.NewGuid(), $"Branch:{condition}", condition);
+                    graph.Add(lastBranch);
+                    var branchContainer = whileNode as Node ?? program;
+                    if (branchContainer != null)
+                        graph.Connect(branchContainer.Id, lastBranch.Id, EdgeType.Contains);
+                }
 
-                if (pendingBranchDivisor.HasValue)
+                if (pendingBranchCompare != null && pendingBranchValue.HasValue)
+                {
+                    // Comparison-based branch: emit ComparisonNode with op and value.
+                    var cmpNode = new ComparisonNode(
+                        Guid.NewGuid(),
+                        $"Comparison:{pendingBranchCompare}:{pendingBranchValue}",
+                        pendingBranchCompare,
+                        pendingBranchValue.Value);
+                    graph.Add(cmpNode);
+                    graph.Connect(lastBranch.Id, cmpNode.Id, EdgeType.DependsOn);
+                }
+                else if (pendingBranchDivisor.HasValue)
                 {
                     var modNode = new ModuloNode(Guid.NewGuid(), $"Modulo:{pendingBranchDivisor}", pendingBranchDivisor.Value);
                     graph.Add(modNode);
@@ -140,17 +334,29 @@ public class SemanticGraphPass : ICompilerPass
                 var printNode = new PrintNode(Guid.NewGuid(), $"Print:{output}", output);
                 graph.Add(printNode);
                 graph.Connect(lastBranch.Id, printNode.Id, EdgeType.TrueBranch);
-
-                if (program != null)
-                    graph.Connect(program.Id, lastBranch.Id, EdgeType.Contains);
             }
         }
 
-        FlushInlineVar(); // flush trailing stdin variable if at end of spec
+        FlushInlineVar();    // flush trailing stdin variable if at end of spec
+        FlushInlineAssign(); // flush trailing assign if at end of spec
+        FlushTrueAssign();   // flush trailing true_assign if at end of spec
+        if (inWhile) FlushWhile();
 
         BuildLoopNode(lines, graph, program);
         BuildVariableNode(lines, graph, program);
-        BuildAssignNodes(lines, graph, program);
+
+        hasLoop = graph.Nodes.OfType<LoopNode>().Any();
+
+        // Emit Contains edges in declaration order (works for both loop and linear programs).
+        foreach (var node in linearContainsOrder)
+            if (program != null) graph.Connect(program.Id, node.Id, EdgeType.Contains);
+
+        if (hasLoop && !graph.Nodes.OfType<AssignNode>().Any())
+        {
+            // Loop programs where assigns weren't captured inline (e.g. loop spec came before
+            // assign in spec order): fall back to BuildAssignNodes.
+            BuildAssignNodes(lines, graph, program);
+        }
 
         // When the LLM couldn't express the program (ERROR: in spec) and graph has min_index
         // but no ArrayNode, try to recover the array from the original Markdown source.

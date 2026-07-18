@@ -29,4 +29,7 @@ public class CompilationContext
 
     public string RepositoryPath { get; set; } = "repository";
     public List<SimilarPrior> SimilarPriors { get; set; } = [];
+
+    // Stdout captured during AcceptanceVerificationPass; avoids a second process launch in tests.
+    public string[]? VerificationOutput { get; set; }
 }

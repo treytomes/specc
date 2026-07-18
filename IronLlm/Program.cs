@@ -124,6 +124,7 @@ compileCommand.SetAction(async result =>
         .AddTransient<ICompilerPass, GraphVisualizationPass>()
         .AddTransient<ICompilerPass, AcceptanceCriteriaPass>()
         .AddTransient<ICompilerPass, EmbeddingPass>()
+        .AddTransient<ICompilerPass, NodeMlpPass>()
         .AddTransient<ICompilerPass, RepositoryRetrievalPass>()
         .AddTransient<ICompilerPass, SemanticNormalizationPass>()
         .AddTransient<ICompilerPass, CfgPass>()

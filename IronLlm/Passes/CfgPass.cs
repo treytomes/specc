@@ -39,8 +39,9 @@ public class CfgPass : ICompilerPass
 
         List<CfgBlock> blocks;
 
-        var arrayNode = graph.Nodes.OfType<ArrayNode>().FirstOrDefault();
-        var hasLoop   = graph.Nodes.OfType<LoopNode>().Any();
+        var arrayNode     = graph.Nodes.OfType<ArrayNode>().FirstOrDefault();
+        var hasLoop       = graph.Nodes.OfType<LoopNode>().Any();
+        var whileLoopNode = graph.Nodes.OfType<WhileLoopNode>().FirstOrDefault();
 
         if (arrayNode != null)
         {
@@ -49,6 +50,18 @@ public class CfgPass : ICompilerPass
             blocks = hasMinIndex
                 ? LowerSelectionSort(graph, arrayNode)
                 : LowerBubbleSort(graph, arrayNode);
+        }
+        else if (whileLoopNode != null)
+        {
+            blocks = LowerWhileLoop(graph, whileLoopNode);
+        }
+        else if (!hasLoop && graph.Nodes.OfType<ComparisonNode>().Any()
+                          && !graph.Nodes.OfType<AssignNode>().Any())
+        {
+            // Comparison-based branching (Guesser): no assigns, no loop.
+            // When assigns are present, treat comparison branches as LLM noise and use
+            // LowerLinear (same convention as LowerFlatLoop with assigns + divisor branches).
+            blocks = LowerComparisonBranch(graph);
         }
         else if (!hasLoop)
         {
@@ -231,6 +244,130 @@ public class CfgPass : ICompilerPass
         return blocks;
     }
 
+    // Lowers a no-loop program whose branches depend on ComparisonNodes (compare: lt/gt/eq).
+    // The structure is: read input → check branches in declaration order → fallthrough to default.
+    private static List<CfgBlock> LowerComparisonBranch(IronLlm.Graph.SemanticGraph graph)
+    {
+        var program = graph.Nodes.OfType<ProgramNode>().FirstOrDefault();
+
+        // Branches in declaration order (Contains edges from the program node).
+        var orderedBranchIds = program != null
+            ? graph.Edges
+                .Where(e => e.From == program.Id && e.Type == EdgeType.Contains)
+                .Select(e => e.To)
+                .ToList()
+            : [];
+
+        var branches = orderedBranchIds
+            .Select(id => graph.Nodes.OfType<BranchNode>().FirstOrDefault(n => n.Id == id))
+            .Where(b => b != null)
+            .Cast<BranchNode>()
+            .ToList();
+
+        // Comparison-based branches (have a DependsOn edge to a ComparisonNode).
+        var cmpBranches = new List<(BranchNode Branch, ComparisonNode Cmp)>();
+        foreach (var b in branches)
+        {
+            var cmpEdge = graph.Edges.FirstOrDefault(e => e.From == b.Id && e.Type == EdgeType.DependsOn);
+            if (cmpEdge == null) continue;
+            var cmp = graph.Nodes.OfType<ComparisonNode>().FirstOrDefault(n => n.Id == cmpEdge.To);
+            if (cmp != null) cmpBranches.Add((b, cmp));
+        }
+
+        // Default branch: no DependsOn edge.
+        var cmpBranchIds = cmpBranches.Select(x => x.Branch.Id).ToHashSet();
+        var defaultBranch = branches.FirstOrDefault(b => !cmpBranchIds.Contains(b.Id));
+
+        string PrintTemplateFor(BranchNode branch)
+        {
+            var printEdge = graph.Edges.FirstOrDefault(e => e.From == branch.Id && e.Type == EdgeType.TrueBranch);
+            if (printEdge == null) return branch.Condition;
+            var print = graph.Nodes.OfType<PrintNode>().FirstOrDefault(n => n.Id == printEdge.To);
+            return print?.Template ?? branch.Condition;
+        }
+
+        // Input variable (may be int or string).
+        var inputNode = graph.Nodes.OfType<InputNode>().FirstOrDefault();
+        var inputName = inputNode?.Name ?? "input";
+
+        var blocks = new List<CfgBlock>();
+
+        // Entry: emit PrintNodes and InputNodes in Contains-edge order so that a
+        // prompt print: before variable: appears before the read, as authored.
+        var entryInstrs = new List<string>();
+        if (program != null)
+        {
+            var nodeIndex = graph.Nodes.ToDictionary(n => n.Id);
+            foreach (var id in orderedBranchIds)
+            {
+                if (!nodeIndex.TryGetValue(id, out var node)) continue;
+                switch (node)
+                {
+                    case PrintNode p:
+                        entryInstrs.Add($"print \"{p.Template}\"");
+                        break;
+                    case InputNode inp:
+                        entryInstrs.Add(inp.Type == "int"
+                            ? $"read_int {inp.Name}"
+                            : $"read {inp.Name}");
+                        break;
+                }
+            }
+        }
+        else if (inputNode != null)
+        {
+            entryInstrs.Add(inputNode.Type == "int"
+                ? $"read_int {inputName}"
+                : $"read {inputName}");
+        }
+
+        var firstCheckLabel = cmpBranches.Count > 0
+            ? $"check_{cmpBranches[0].Branch.Condition}"
+            : "default_output";
+
+        blocks.Add(new("entry", entryInstrs, firstCheckLabel, null));
+
+        var fallthrough = defaultBranch != null ? "default_output" : "exit";
+
+        for (var i = 0; i < cmpBranches.Count; i++)
+        {
+            var (branch, cmp) = cmpBranches[i];
+            var nextLabel = i + 1 < cmpBranches.Count
+                ? $"check_{cmpBranches[i + 1].Branch.Condition}"
+                : fallthrough;
+
+            var checkInstr = $"if {inputName} {cmp.Op} {cmp.Value}";
+            // lt/gt use Clt/Cgt → Brtrue to SuccessorFalse when condition is true.
+            // eq uses Ceq → Brfalse to SuccessorFalse when condition is FALSE (not equal).
+            // So for lt/gt: SuccessorFalse=print (taken), SuccessorTrue=next (fallthrough).
+            //    for eq:    SuccessorFalse=next (not equal, fallthrough), SuccessorTrue=print (equal).
+            if (cmp.Op == "eq")
+                blocks.Add(new($"check_{branch.Condition}", [checkInstr], $"print_{branch.Condition}", nextLabel));
+            else
+                blocks.Add(new($"check_{branch.Condition}", [checkInstr], nextLabel, $"print_{branch.Condition}"));
+
+
+            var template = PrintTemplateFor(branch);
+            var printInstr = template.StartsWith('{') && template.EndsWith('}')
+                ? $"print {template.Trim('{', '}')}"
+                : $"print \"{template}\"";
+            blocks.Add(new($"print_{branch.Condition}", [printInstr], "exit", null));
+        }
+
+        if (defaultBranch != null)
+        {
+            var template = PrintTemplateFor(defaultBranch);
+            var printInstr = template.StartsWith('{') && template.EndsWith('}')
+                ? $"print {template.Trim('{', '}')}"
+                : $"print \"{template}\"";
+            blocks.Add(new("default_output", [printInstr], "exit", null));
+        }
+
+        blocks.Add(new("exit", [], null, null));
+
+        return blocks;
+    }
+
     private static List<CfgBlock> LowerLinear(IronLlm.Graph.SemanticGraph graph)
     {
         // Collect PrintNodes and InputNodes in the order they appear as Contains edges
@@ -279,7 +416,16 @@ public class CfgPass : ICompilerPass
                     }
                     break;
                 case InputNode inp:
-                    instructions.Add($"read {inp.Name}");
+                    var readInstr = inp.Type.Equals("int", StringComparison.OrdinalIgnoreCase)
+                        ? $"read_int {inp.Name}"
+                        : $"read {inp.Name}";
+                    instructions.Add(readInstr);
+                    break;
+                case AssignNode a:
+                    var assignInstr = a.Op == "copy"
+                        ? $"assign {a.Target} copy {a.Left}"
+                        : $"assign {a.Target} {a.Op} {a.Left} {a.Right}";
+                    instructions.Add(assignInstr);
                     break;
             }
         }
@@ -289,6 +435,137 @@ public class CfgPass : ICompilerPass
             new("entry", instructions, "exit", null),
             new("exit",  [],           null,   null),
         ];
+    }
+
+    private static List<CfgBlock> LowerWhileLoop(IronLlm.Graph.SemanticGraph graph, WhileLoopNode wl)
+    {
+        var blocks = new List<CfgBlock>();
+
+        // entry: read all InputNodes (program-level Contains), then jump to loop_top.
+        var program = graph.Nodes.OfType<ProgramNode>().FirstOrDefault();
+        var programContains = program != null
+            ? graph.Edges
+                .Where(e => e.From == program.Id && e.Type == EdgeType.Contains)
+                .Select(e => e.To)
+                .ToList()
+            : [];
+        var nodeIndex = graph.Nodes.ToDictionary(n => n.Id);
+
+        var entryInstrs = new List<string>();
+        foreach (var id in programContains)
+        {
+            if (!nodeIndex.TryGetValue(id, out var n)) continue;
+            if (n is InputNode inp)
+                entryInstrs.Add(inp.Type.Equals("int", StringComparison.OrdinalIgnoreCase)
+                    ? $"read_int {inp.Name}"
+                    : $"read {inp.Name}");
+        }
+        blocks.Add(new("entry", entryInstrs, "loop_top", null));
+
+        // loop_top: emit PrintNodes and BranchNodes that are Contains children of the WhileLoopNode.
+        var whileContainsIds = graph.Edges
+            .Where(e => e.From == wl.Id && e.Type == EdgeType.Contains)
+            .Select(e => e.To)
+            .ToList();
+
+        var loopTopInstrs = new List<string>();
+
+        // Collect ordered body: PrintNodes go into loop_top; BranchNodes handled after while_test.
+        var bodyNodes = whileContainsIds
+            .Where(nodeIndex.ContainsKey)
+            .Select(id => nodeIndex[id])
+            .ToList();
+
+        foreach (var node in bodyNodes)
+        {
+            if (node is not PrintNode p) continue;
+            var tmpl = p.Template;
+            var vm   = System.Text.RegularExpressions.Regex.Match(tmpl, @"\{(\w+)\}");
+            if (!vm.Success)
+                loopTopInstrs.Add($"print \"{tmpl}\"");
+            else if (tmpl.StartsWith('{') && tmpl.EndsWith('}') && tmpl.Length == vm.Length)
+                loopTopInstrs.Add($"print {vm.Groups[1].Value}");
+            else
+            {
+                var prefix = tmpl[..vm.Index];
+                var suffix = tmpl[(vm.Index + vm.Length)..];
+                loopTopInstrs.Add($"print_concat \"{prefix}\" {vm.Groups[1].Value} \"{suffix}\"");
+            }
+        }
+
+        // loop_top → while_test (check condition before executing branch bodies).
+        blocks.Add(new("loop_top", loopTopInstrs, "while_test", null));
+
+        // One check/assign block pair per BranchNode.
+        // Condition names may collide (LLM can emit two "default" branches); use index suffix
+        // to keep block labels unique.
+        var branchNodes = bodyNodes.OfType<BranchNode>().ToList();
+        string BranchLabel(int idx) =>
+            branchNodes.Count(b => b.Condition == branchNodes[idx].Condition) > 1
+                ? $"check_{branchNodes[idx].Condition}_{idx}"
+                : $"check_{branchNodes[idx].Condition}";
+        string BodyLabel(int branchIdx, int stepIdx) =>
+            branchNodes.Count(b => b.Condition == branchNodes[branchIdx].Condition) > 1
+                ? $"body_{branchNodes[branchIdx].Condition}_{branchIdx}_{stepIdx}"
+                : $"body_{branchNodes[branchIdx].Condition}_{stepIdx}";
+
+        for (var i = 0; i < branchNodes.Count; i++)
+        {
+            var branch = branchNodes[i];
+            var nextCheckLabel = i + 1 < branchNodes.Count
+                ? BranchLabel(i + 1)
+                : "while_test";
+
+            // Find the ModuloNode this branch depends on (divisor check).
+            var modEdge = graph.Edges.FirstOrDefault(e => e.From == branch.Id && e.Type == EdgeType.DependsOn);
+            var modNode = modEdge != null ? nodeIndex.GetValueOrDefault(modEdge.To) as ModuloNode : null;
+
+            // Find the assign bodies: Contains edges from this branch to AssignNodes.
+            var assigns = graph.Edges
+                .Where(e => e.From == branch.Id && e.Type == EdgeType.Contains)
+                .Select(e => e.To)
+                .Where(nodeIndex.ContainsKey)
+                .Select(id => nodeIndex[id])
+                .OfType<AssignNode>()
+                .ToList();
+
+            var firstBodyLabel = assigns.Count > 0 ? BodyLabel(i, 0) : "while_test";
+
+            if (modNode != null)
+            {
+                // Modulo check: "if n % div == 0" emits Rem + LdcI4 0 + Ceq.
+                // Ceq=1 when divisible (true) → SuccessorTrue=firstBodyLabel.
+                // Ceq=0 when not divisible (false) → Brfalse SuccessorFalse=nextCheckLabel.
+                var checkInstr = $"if {wl.Variable} % {modNode.Divisor} == 0";
+                blocks.Add(new(BranchLabel(i), [checkInstr], firstBodyLabel, nextCheckLabel));
+            }
+            else
+            {
+                // Default/else branch (no modulo): unconditionally jump to body.
+                blocks.Add(new(BranchLabel(i), [], firstBodyLabel, null));
+            }
+
+            // Emit one block per assign in the branch body, chaining back to loop_top.
+            for (var j = 0; j < assigns.Count; j++)
+            {
+                var a     = assigns[j];
+                var instr = a.Op == "copy"
+                    ? $"assign {a.Target} copy {a.Left}"
+                    : $"assign {a.Target} {a.Op} {a.Left} {a.Right}";
+                var next = j + 1 < assigns.Count ? BodyLabel(i, j + 1) : "loop_top";
+                blocks.Add(new(BodyLabel(i, j), [instr], next, null));
+            }
+        }
+
+        // while_test: if n == exitValue → exit; else → first branch check (or back to loop_top).
+        // Uses Ceq: Ceq=1 when equal → SuccessorTrue=exit.
+        //           Ceq=0 when not equal → Brfalse SuccessorFalse=first body check.
+        var firstBranchOrTop = branchNodes.Count > 0 ? BranchLabel(0) : "loop_top";
+        var testInstr = $"if {wl.Variable} eq {wl.Value}";
+        blocks.Add(new("while_test", [testInstr], "exit", firstBranchOrTop));
+
+        blocks.Add(new("exit", [], null, null));
+        return blocks;
     }
 
     private static List<CfgBlock> LowerSelectionSort(IronLlm.Graph.SemanticGraph graph, ArrayNode arr)

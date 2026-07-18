@@ -65,7 +65,7 @@ public class StackIrPass : ICompilerPass
 
             if (block.SuccessorFalse != null)
             {
-                if (lastOp == OpCode.Cgt)
+                if (lastOp == OpCode.Cgt || lastOp == OpCode.Clt)
                     ir.Add(new StackInstruction(OpCode.Brtrue,  block.SuccessorFalse));
                 else
                     ir.Add(new StackInstruction(OpCode.Brfalse, block.SuccessorFalse));
@@ -283,10 +283,10 @@ public class StackIrPass : ICompilerPass
         {
             var arrName = printArrMatch.Groups[1].Value;
             var idxVar  = printArrMatch.Groups[2].Value;
-            yield return new(OpCode.LdlocA,   arrName);
-            yield return new(OpCode.LdlocS,   idxVar);
+            yield return new(OpCode.LdlocA,    arrName);
+            yield return new(OpCode.LdlocS,    idxVar);
             yield return new(OpCode.LdelemI4);
-            yield return new(OpCode.Call,     "Console.WriteLine(int)");
+            yield return new(OpCode.Intrinsic, "console.write_line.int");
             yield break;
         }
 
@@ -297,13 +297,13 @@ public class StackIrPass : ICompilerPass
             var varName = printVarMatch.Groups[1].Value;
             if (stringVars?.Contains(varName) == true)
             {
-                yield return new(OpCode.LdlocStr, varName);
-                yield return new(OpCode.Call,     "Console.WriteLine(string)");
+                yield return new(OpCode.LdlocStr,  varName);
+                yield return new(OpCode.Intrinsic, "console.write_line.string");
             }
             else
             {
-                yield return new(OpCode.LdlocS, varName);
-                yield return new(OpCode.Call,   "Console.WriteLine(int)");
+                yield return new(OpCode.LdlocS,    varName);
+                yield return new(OpCode.Intrinsic, "console.write_line.int");
             }
             yield break;
         }
@@ -312,8 +312,8 @@ public class StackIrPass : ICompilerPass
         var printStrMatch = Regex.Match(s, @"^print\s+""(.*)""$");
         if (printStrMatch.Success)
         {
-            yield return new(OpCode.LdstrS, printStrMatch.Groups[1].Value);
-            yield return new(OpCode.Call,   "Console.WriteLine(string)");
+            yield return new(OpCode.LdstrS,    printStrMatch.Groups[1].Value);
+            yield return new(OpCode.Intrinsic, "console.write_line.string");
             yield break;
         }
 
@@ -326,15 +326,15 @@ public class StackIrPass : ICompilerPass
             var prefix  = printConcatMatch.Groups[1].Value;
             var varName = printConcatMatch.Groups[2].Value;
             var suffix  = printConcatMatch.Groups[3].Value;
-            yield return new(OpCode.LdstrS,  prefix);
-            yield return new(OpCode.LdlocStr, varName);
-            yield return new(OpCode.Concat);
+            yield return new(OpCode.LdstrS,    prefix);
+            yield return new(OpCode.LdlocStr,  varName);
+            yield return new(OpCode.Intrinsic, "string.concat");
             if (!string.IsNullOrEmpty(suffix))
             {
-                yield return new(OpCode.LdstrS, suffix);
-                yield return new(OpCode.Concat);
+                yield return new(OpCode.LdstrS,    suffix);
+                yield return new(OpCode.Intrinsic, "string.concat");
             }
-            yield return new(OpCode.Call, "Console.WriteLine(string)");
+            yield return new(OpCode.Intrinsic, "console.write_line.string");
             yield break;
         }
 
@@ -353,8 +353,48 @@ public class StackIrPass : ICompilerPass
         var readMatch = Regex.Match(s, @"^read\s+(\w+)$");
         if (readMatch.Success)
         {
-            yield return new(OpCode.ReadLine);
-            yield return new(OpCode.StlocStr, readMatch.Groups[1].Value);
+            yield return new(OpCode.Intrinsic, "console.read_line");
+            yield return new(OpCode.StlocStr,  readMatch.Groups[1].Value);
+            yield break;
+        }
+
+        // "read_int {var}" — Console.ReadLine() → int.Parse() → store in named int local
+        var readIntMatch = Regex.Match(s, @"^read_int\s+(\w+)$");
+        if (readIntMatch.Success)
+        {
+            yield return new(OpCode.Intrinsic, "console.read_line");
+            yield return new(OpCode.Intrinsic, "int.parse");
+            yield return new(OpCode.StlocS,    readIntMatch.Groups[1].Value);
+            yield break;
+        }
+
+        // "if {var} lt {int}" — less-than comparison
+        var cmpLtMatch = Regex.Match(s, @"^if\s+(\w+)\s+lt\s+(-?\d+)$");
+        if (cmpLtMatch.Success)
+        {
+            yield return new(OpCode.LdlocS, cmpLtMatch.Groups[1].Value);
+            yield return new(OpCode.LdcI4,  cmpLtMatch.Groups[2].Value);
+            yield return new(OpCode.Clt);
+            yield break;
+        }
+
+        // "if {var} gt {int}" — greater-than comparison
+        var cmpGtMatch = Regex.Match(s, @"^if\s+(\w+)\s+gt\s+(-?\d+)$");
+        if (cmpGtMatch.Success)
+        {
+            yield return new(OpCode.LdlocS, cmpGtMatch.Groups[1].Value);
+            yield return new(OpCode.LdcI4,  cmpGtMatch.Groups[2].Value);
+            yield return new(OpCode.Cgt);
+            yield break;
+        }
+
+        // "if {var} eq {int}" — equality comparison
+        var cmpEqMatch = Regex.Match(s, @"^if\s+(\w+)\s+eq\s+(-?\d+)$");
+        if (cmpEqMatch.Success)
+        {
+            yield return new(OpCode.LdlocS, cmpEqMatch.Groups[1].Value);
+            yield return new(OpCode.LdcI4,  cmpEqMatch.Groups[2].Value);
+            yield return new(OpCode.Ceq);
             yield break;
         }
 
@@ -379,7 +419,7 @@ public class StackIrPass : ICompilerPass
 
         // "assign {target} {op} {left} {right}" — arithmetic assignment
         // left/right are either {varName} (variable reference) or bare integer literals.
-        var assignMatch = Regex.Match(s, @"^assign\s+(\w+)\s+(mul|add|sub)\s+(\{?\w+\}?)\s+(\{?\w+\}?)$");
+        var assignMatch = Regex.Match(s, @"^assign\s+(\w+)\s+(mul|add|sub|div)\s+(\{?\w+\}?)\s+(\{?\w+\}?)$");
         if (assignMatch.Success)
         {
             var target = assignMatch.Groups[1].Value;
@@ -402,6 +442,7 @@ public class StackIrPass : ICompilerPass
             {
                 "mul" => new(OpCode.Mul),
                 "sub" => new(OpCode.Sub),
+                "div" => new(OpCode.Div),
                 _     => new(OpCode.Add),
             };
             yield return new(OpCode.StlocS, target);

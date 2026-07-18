@@ -33,9 +33,10 @@ public class StackIrPassTests
     }
 
     [Fact]
-    public void StackIr_ContainsCall_ForConsoleWriteLine()
+    public void StackIr_ContainsIntrinsic_ForConsoleWriteLine()
     {
-        Assert.Contains(BuildContext().StackIr, i => i.Op == OpCode.Call);
+        Assert.Contains(BuildContext().StackIr,
+            i => i.Op == OpCode.Intrinsic && i.Operand!.StartsWith("console.write_line"));
     }
 
     [Fact]
@@ -211,7 +212,7 @@ public class StackIrPassTests
     [InlineData("print arr[k]",                        OpCode.LdlocA,   "arr")]
     [InlineData("print arr[k]",                        OpCode.LdlocS,   "k")]
     [InlineData("print arr[k]",                        OpCode.LdelemI4, null)]
-    [InlineData("print arr[k]",                        OpCode.Call,     "Console.WriteLine(int)")]
+    [InlineData("print arr[k]",                        OpCode.Intrinsic, "console.write_line.int")]
     public void LowerInstruction_NewPatterns_ProducesExpectedOp(
         string instr, OpCode expectedOp, string? expectedOperand)
     {

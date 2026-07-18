@@ -54,17 +54,15 @@ Self-hosting is not a near-term deliverable. It is a horizon that shapes decisio
 
 Every new construct added to the spec format grows the LLM system prompt and reduces extraction reliability. The `.spec` text format has a ceiling: ministral-3b's ability to correctly apply all available constructs degrades as the prompt grows. We have already seen it invent syntax (`default_output:`) and ignore rules.
 
-Spec 21 replaces the two-step Markdown → `.spec` → graph path with a single structured LLM call that produces the graph JSON directly, constrained by a JSON Schema. This removes the ceiling — the model cannot produce structurally invalid graph topology, and the grammar constraint tends to reduce token waste and retries.
+Spec 21 replaces the two-step Markdown → `.spec` → graph path with a single structured LLM call that produces the graph JSON directly. Three attempts have been made, all blocked:
 
-It was attempted once and blocked on two issues, both now mitigated:
-- **Speed:** 13× slower than `.spec` extraction because of token volume. Mitigated by `ChatOptions.ResponseFormat` (Spec 22, complete) which constrains sampling and reduces wasted output.
-- **Reliability:** the model produced structurally valid but pipeline-incompatible topology (e.g. a `Comparison` node instead of a `Modulo` node for a divisibility check). Mitigated by a grammar-constrained JSON schema that enumerates valid `kind` discriminator values and required fields per node type.
+- **Attempt 1 (2026-07-16):** plain JSON. ~13 minutes for FizzBuzz. Wrong topology (two Modulo nodes instead of one Modulo(15)).
+- **Attempt 2 (2026-07-17):** JSON with `ChatOptions.ResponseFormat` schema constraint + worked examples. 7+ minutes. Topology correct, but model omitted required type-specific fields, producing null-reference crashes. Speed unchanged.
+- **Attempt 3 / YAML spike (2026-07-17):** YAML format to reduce token count. 6m 51s, **4039 output tokens** — the model generated the graph twice (self-corrected mid-output), inflating token count beyond even the JSON attempts. Invalid UUIDs, hallucinated nodes, format-instruction violations.
 
-**What Spec 21 enables:** once the LLM produces the graph directly, the extraction front-end scales with the graph type system, not with a growing spec format. Adding `WhileLoopNode` means adding one entry to the schema and one example in the prompt — not a new spec keyword, a new parser branch, and a new system prompt rule.
+**Conclusion:** ministral-3b cannot reliably produce a complete, well-formed graph for FizzBuzz-complexity programs regardless of intermediate format. The bottleneck is model capacity, not format. Spec 21 is deferred until a larger extraction model (≥7B) is available locally.
 
-**What Spec 21 does not do:** it does not improve the quality of the graph once produced. `SemanticNormalizationPass` still validates nodes against the reference corpus. The graph can still be wrong — it just can't be structurally malformed.
-
-Spec 21 is the near-term answer to extraction reliability. Spec 04 is the longer-horizon answer that eventually removes the need for extraction altogether.
+Spec 21 remains the correct architectural direction. Its value scales with the graph type system: adding `WhileLoopNode` means one schema entry and one prompt example, not a new spec keyword and parser branch. It just requires a model that can hold the schema and the input context simultaneously without degrading.
 
 ---
 
@@ -72,7 +70,7 @@ Spec 21 is the near-term answer to extraction reliability. Spec 04 is the longer
 
 After Specs 32, 33, and 34:
 
-- **If the model fails on or before Spec 34:** implement Spec 21 next. The `.spec` format has reached its useful limit. Direct graph extraction removes the extraction bottleneck and unlocks arbitrarily complex programs limited only by the graph type system.
+- **If the model fails on or before Spec 34:** the extraction cliff is confirmed. Document the failure mode. Spec 21 remains deferred (model capacity, not format). The next path is either: (a) switch to a larger local model (mistral:7b is available), or (b) proceed to Phase 2 with the examples that do compile.
 - **If the model handles Spec 34 reliably:** run Spec 35 (geometry validation), then implement Spec 04. The extraction path is still viable; the next leverage point is the learned representation.
 
 ---

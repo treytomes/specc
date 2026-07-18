@@ -62,11 +62,13 @@ public class MarkdownSpecPassTests
         public void Dispose() { }
     }
 
+    // Classifier response returned for call 1; chatResponse for call 2 (extraction) onward.
     private static MarkdownSpecPass MakePass(string chatResponse) =>
-        new(new StubChatClient(chatResponse), NullLogger<MarkdownSpecPass>.Instance);
+        new(new QueuedStubChatClient("""["loop","branch"]""", chatResponse), NullLogger<MarkdownSpecPass>.Instance);
 
+    // Prepend a classifier response so tests don't need to supply it explicitly.
     private static MarkdownSpecPass MakeQueuedPass(params string[] responses) =>
-        new(new QueuedStubChatClient(responses), NullLogger<MarkdownSpecPass>.Instance);
+        new(new QueuedStubChatClient(["""["loop","branch"]""", ..responses]), NullLogger<MarkdownSpecPass>.Instance);
 
     private static async Task<CompilationContext> RunPassAsync(
         string chatResponse, string? specContent = null)
@@ -338,5 +340,138 @@ public class MarkdownSpecPassTests
         Assert.Equal("Fizz",     result[2].Expected);
         Assert.Equal("Buzz",     result[4].Expected);
         Assert.Equal("FizzBuzz", result[14].Expected);
+    }
+}
+
+public class ConsistencyMissingTests
+{
+    private const string FizzBuzzSpec = """
+        program: FizzBuzz
+
+        loop:
+          from: 1
+          to: 100
+
+        branch:
+          condition: fizzbuzz
+          divisor: 15
+          true_output: "FizzBuzz"
+
+        branch:
+          condition: fizz
+          divisor: 3
+          true_output: "Fizz"
+
+        branch:
+          condition: buzz
+          divisor: 5
+          true_output: "Buzz"
+
+        branch:
+          condition: default
+          true_output: "{n}"
+        """;
+
+    private const string CollatzSpec = """
+        program: Collatz
+
+        variable:
+          name: n
+          type: int
+          source: stdin
+
+        while:
+          variable: n
+          condition: ne
+          value: 1
+
+        branch:
+          condition: even
+          divisor: 2
+          true_assign:
+            target: n
+            op: div
+            left: {n}
+            right: 2
+        """;
+
+    [Fact]
+    public void EmptyList_WhenAllTagsMatchSpec()
+    {
+        var missing = MarkdownSpecPass.ConsistencyMissing(["loop", "branch"], FizzBuzzSpec);
+        Assert.Empty(missing);
+    }
+
+    [Fact]
+    public void WhileMissing_WhenTagPresentButKeywordAbsent()
+    {
+        var spec    = FizzBuzzSpec; // has loop/branch but no while:
+        var missing = MarkdownSpecPass.ConsistencyMissing(["loop", "branch", "while"], spec);
+        Assert.Contains("while:", missing);
+    }
+
+    [Fact]
+    public void NoMissing_WhenWhileTagMatchesWhileKeyword()
+    {
+        var missing = MarkdownSpecPass.ConsistencyMissing(["input", "arithmetic", "while"], CollatzSpec);
+        Assert.Empty(missing);
+    }
+
+    [Fact]
+    public void ArithmeticMissing_WhenAssignAbsent()
+    {
+        var missing = MarkdownSpecPass.ConsistencyMissing(["loop", "arithmetic"], FizzBuzzSpec);
+        Assert.Contains("assign:", missing);
+    }
+
+    [Fact]
+    public void InputMissing_WhenSourceStdinAbsent()
+    {
+        var missing = MarkdownSpecPass.ConsistencyMissing(["loop", "input"], FizzBuzzSpec);
+        Assert.Contains("source: stdin", missing);
+    }
+
+    [Fact]
+    public void BranchMissing_WhenBranchKeywordAbsent()
+    {
+        var spec    = "program: Minimal\n\nloop:\n  from: 1\n  to: 10\n";
+        var missing = MarkdownSpecPass.ConsistencyMissing(["loop", "branch"], spec);
+        Assert.Contains("branch:", missing);
+    }
+
+    [Fact]
+    public void LoopMissing_WhenLoopKeywordAbsent()
+    {
+        var spec    = "program: Minimal\n";
+        var missing = MarkdownSpecPass.ConsistencyMissing(["loop"], spec);
+        Assert.Contains("loop:", missing);
+    }
+
+    [Fact]
+    public void MultipleTagsMissing_ReportedTogether()
+    {
+        var spec    = "program: Bare\n";
+        var missing = MarkdownSpecPass.ConsistencyMissing(["loop", "branch", "while", "arithmetic", "input"], spec);
+        Assert.Contains("loop:",         missing);
+        Assert.Contains("branch:",       missing);
+        Assert.Contains("while:",        missing);
+        Assert.Contains("assign:",       missing);
+        Assert.Contains("source: stdin", missing);
+        Assert.Equal(5, missing.Count);
+    }
+
+    [Fact]
+    public void EmptyTags_NeverMissing()
+    {
+        var missing = MarkdownSpecPass.ConsistencyMissing([], FizzBuzzSpec);
+        Assert.Empty(missing);
+    }
+
+    [Fact]
+    public void UnknownTag_Ignored()
+    {
+        // Tags not in the known-keyword table should produce no missing entry.
+        var missing = MarkdownSpecPass.ConsistencyMissing(["loop", "unknown_future_tag"], FizzBuzzSpec);
+        Assert.Empty(missing);
     }
 }
