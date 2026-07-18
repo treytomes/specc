@@ -216,6 +216,31 @@ public static class SpecConstructLibrary
               left: {n}
               right: 2
 
+        Example (interactive: keep reading guesses until guess equals answer):
+          program: SimpleGuess
+          variable:
+            name: answer
+            type: int
+            initial_value: 42
+          while:
+            compare_lhs: {guess}
+            compare: ne
+            compare_rhs: {answer}
+          variable:
+            name: guess
+            type: int
+            source: stdin
+          branch:
+            condition: too_low
+            compare: lt
+            compare_with: {answer}
+            true_output: "Too low!"
+          branch:
+            condition: too_high
+            compare: gt
+            compare_with: {answer}
+            true_output: "Too high!"
+
         """;
 
     public static string RandomSection => """

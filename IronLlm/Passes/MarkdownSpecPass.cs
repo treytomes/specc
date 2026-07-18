@@ -39,6 +39,13 @@ public class MarkdownSpecPass : ICompilerPass
         var extracted = await ExtractSpecAsync(markdown, tags);
 
         if (extracted.StartsWith("ERROR:", StringComparison.OrdinalIgnoreCase))
+        {
+            _logger.LogWarning("Extraction failed with [{Tags}] — retrying with full construct set", string.Join(", ", tags));
+            tags      = ["loop", "branch", "arithmetic", "input", "array", "while", "random"];
+            extracted = await ExtractSpecAsync(markdown, tags);
+        }
+
+        if (extracted.StartsWith("ERROR:", StringComparison.OrdinalIgnoreCase))
             throw new CompilationException(
                 $"LLM could not extract a .spec from the Markdown document: {extracted}");
 
