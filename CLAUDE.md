@@ -171,6 +171,8 @@ The compiled executable is written to `<artifacts-dir>/<ProgramName>` and is dir
 | Calculator | Read two ints from stdin, print their sum | Pass (3/3 test cases) |
 | Collatz | Read int from stdin, run Collatz sequence, while loop + div/mul/add | Pass (3/3 test cases) |
 | GuessingGame | Random target 1–100, stdin guesses, while loop + var-vs-var comparison | Pass |
+| DiceRoll | random: in isolation — roll a d6 and print the result | Pass |
+| SimpleGuess | Interactive while + compare_with: branches, hardcoded target | Pass |
 
 ## Upcoming work
 
