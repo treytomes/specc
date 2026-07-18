@@ -105,9 +105,9 @@ public class SemanticNormalizationPass : ICompilerPass
         {
             var node = graph.Nodes[i];
 
-            // AssertionNodes are metadata; ArithmeticNode/AssignNode/InputNode are exact-typed from the parsed spec.
+            // AssertionNodes are metadata; ArithmeticNode/AssignNode/InputNode/RandomNode are exact-typed from the parsed spec.
             // None of these need similarity-based validation.
-            if (node is AssertionNode or ArithmeticNode or AssignNode or InputNode) continue;
+            if (node is AssertionNode or ArithmeticNode or AssignNode or InputNode or RandomNode) continue;
 
             if (!embeddingMap.TryGetValue(node.Id, out var embedding))
             {

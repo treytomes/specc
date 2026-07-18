@@ -20,6 +20,7 @@ namespace IronLlm.Graph;
 [JsonDerivedType(typeof(AssignNode),     "Assign")]
 [JsonDerivedType(typeof(InputNode),      "Input")]
 [JsonDerivedType(typeof(WhileLoopNode),  "WhileLoop")]
+[JsonDerivedType(typeof(RandomNode),     "Random")]
 public abstract record Node(Guid Id, string Label);
 
 public record ProgramNode(Guid Id, string Label, string Name) : Node(Id, Label);
@@ -28,7 +29,7 @@ public record BranchNode(Guid Id, string Label, string Condition) : Node(Id, Lab
 public record ConstantNode(Guid Id, string Label, int Value) : Node(Id, Label);
 public record PrintNode(Guid Id, string Label, string Template) : Node(Id, Label);
 public record ModuloNode(Guid Id, string Label, int Divisor) : Node(Id, Label);
-public record ComparisonNode(Guid Id, string Label, string Op, int Value = 0) : Node(Id, Label);
+public record ComparisonNode(Guid Id, string Label, string Op, int Value = 0, string? RhsVar = null) : Node(Id, Label);
 public record VariableNode(Guid Id, string Label, string Name, string Type, int? InitialValue = null) : Node(Id, Label);
 public record AssertionNode(Guid Id, string Label, int Iteration, string Expected) : Node(Id, Label);
 
@@ -54,7 +55,11 @@ public record AssignNode(Guid Id, string Label, string Target, string Op, string
 // Reads a line from stdin into a named variable. Type is "string" or "int".
 public record InputNode(Guid Id, string Label, string Name, string Type = "string") : Node(Id, Label);
 
-// Loop that runs while Variable Op Value is true (e.g. n != 1).
+// Loop that runs while a condition is true.
+// Variable op Value (int rhs) or Variable op RhsVar (var rhs) — exactly one is active.
 // Body nodes are connected via EdgeType.Contains edges from this node.
-public record WhileLoopNode(Guid Id, string Label, string Variable, string Op, int Value)
+public record WhileLoopNode(Guid Id, string Label, string Variable, string Op, int Value = 0, string? RhsVar = null)
     : Node(Id, Label);
+
+// Declares a variable whose value is a random integer in [Min, Max].
+public record RandomNode(Guid Id, string Label, string Name, int Min, int Max) : Node(Id, Label);

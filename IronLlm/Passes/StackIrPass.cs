@@ -368,6 +368,59 @@ public class StackIrPass : ICompilerPass
             yield break;
         }
 
+        // "rand_int {name} {min} {max}" — Random.Shared.Next(min, max+1) → store
+        var randIntMatch = Regex.Match(s, @"^rand_int\s+(\w+)\s+(-?\d+)\s+(-?\d+)$");
+        if (randIntMatch.Success)
+        {
+            var name = randIntMatch.Groups[1].Value;
+            var min  = randIntMatch.Groups[2].Value;
+            var max  = (int.Parse(randIntMatch.Groups[3].Value) + 1).ToString();
+            yield return new(OpCode.RandInt, $"{name}:{min}:{max}");
+            yield break;
+        }
+
+        // "if {var} lt {var}" — less-than var-vs-var comparison
+        var cmpLtVarMatch = Regex.Match(s, @"^if\s+(\w+)\s+lt\s+\{(\w+)\}$");
+        if (cmpLtVarMatch.Success)
+        {
+            yield return new(OpCode.LdlocS, cmpLtVarMatch.Groups[1].Value);
+            yield return new(OpCode.LdlocS, cmpLtVarMatch.Groups[2].Value);
+            yield return new(OpCode.Clt);
+            yield break;
+        }
+
+        // "if {var} gt {var}" — greater-than var-vs-var comparison
+        var cmpGtVarMatch = Regex.Match(s, @"^if\s+(\w+)\s+gt\s+\{(\w+)\}$");
+        if (cmpGtVarMatch.Success)
+        {
+            yield return new(OpCode.LdlocS, cmpGtVarMatch.Groups[1].Value);
+            yield return new(OpCode.LdlocS, cmpGtVarMatch.Groups[2].Value);
+            yield return new(OpCode.Cgt);
+            yield break;
+        }
+
+        // "if {var} eq {var}" — equality var-vs-var comparison
+        var cmpEqVarMatch = Regex.Match(s, @"^if\s+(\w+)\s+eq\s+\{(\w+)\}$");
+        if (cmpEqVarMatch.Success)
+        {
+            yield return new(OpCode.LdlocS, cmpEqVarMatch.Groups[1].Value);
+            yield return new(OpCode.LdlocS, cmpEqVarMatch.Groups[2].Value);
+            yield return new(OpCode.Ceq);
+            yield break;
+        }
+
+        // "if {var} ne {var}" — not-equal var-vs-var comparison (Ceq + invert)
+        var cmpNeVarMatch = Regex.Match(s, @"^if\s+(\w+)\s+ne\s+\{(\w+)\}$");
+        if (cmpNeVarMatch.Success)
+        {
+            yield return new(OpCode.LdlocS, cmpNeVarMatch.Groups[1].Value);
+            yield return new(OpCode.LdlocS, cmpNeVarMatch.Groups[2].Value);
+            yield return new(OpCode.Ceq);
+            yield return new(OpCode.LdcI4, "0");
+            yield return new(OpCode.Ceq);
+            yield break;
+        }
+
         // "if {var} lt {int}" — less-than comparison
         var cmpLtMatch = Regex.Match(s, @"^if\s+(\w+)\s+lt\s+(-?\d+)$");
         if (cmpLtMatch.Success)
@@ -394,6 +447,18 @@ public class StackIrPass : ICompilerPass
         {
             yield return new(OpCode.LdlocS, cmpEqMatch.Groups[1].Value);
             yield return new(OpCode.LdcI4,  cmpEqMatch.Groups[2].Value);
+            yield return new(OpCode.Ceq);
+            yield break;
+        }
+
+        // "if {var} ne {int}" — not-equal comparison (Ceq + invert)
+        var cmpNeMatch = Regex.Match(s, @"^if\s+(\w+)\s+ne\s+(-?\d+)$");
+        if (cmpNeMatch.Success)
+        {
+            yield return new(OpCode.LdlocS, cmpNeMatch.Groups[1].Value);
+            yield return new(OpCode.LdcI4,  cmpNeMatch.Groups[2].Value);
+            yield return new(OpCode.Ceq);
+            yield return new(OpCode.LdcI4,  "0");
             yield return new(OpCode.Ceq);
             yield break;
         }

@@ -53,7 +53,14 @@ public class CfgPass : ICompilerPass
         }
         else if (whileLoopNode != null)
         {
-            blocks = LowerWhileLoop(graph, whileLoopNode);
+            // If the while condition uses a variable rhs (RhsVar != null) or there are
+            // comparison-based (var-op-var or var-op-int) branches inside the while body,
+            // use the interactive do-while lowerer.
+            var hasVarRhsWhile = whileLoopNode.RhsVar != null;
+            var hasCompBranches = graph.Nodes.OfType<ComparisonNode>().Any();
+            blocks = (hasVarRhsWhile || hasCompBranches)
+                ? LowerInteractiveWhileLoop(graph, whileLoopNode)
+                : LowerWhileLoop(graph, whileLoopNode);
         }
         else if (!hasLoop && graph.Nodes.OfType<ComparisonNode>().Any()
                           && !graph.Nodes.OfType<AssignNode>().Any())
@@ -336,7 +343,9 @@ public class CfgPass : ICompilerPass
                 ? $"check_{cmpBranches[i + 1].Branch.Condition}"
                 : fallthrough;
 
-            var checkInstr = $"if {inputName} {cmp.Op} {cmp.Value}";
+            // Build the check instruction: "if lhs op rhs" where rhs is either int or {var}.
+            var rhs = cmp.RhsVar != null ? $"{{{cmp.RhsVar}}}" : cmp.Value.ToString();
+            var checkInstr = $"if {inputName} {cmp.Op} {rhs}";
             // lt/gt use Clt/Cgt → Brtrue to SuccessorFalse when condition is true.
             // eq uses Ceq → Brfalse to SuccessorFalse when condition is FALSE (not equal).
             // So for lt/gt: SuccessorFalse=print (taken), SuccessorTrue=next (fallthrough).
@@ -563,6 +572,138 @@ public class CfgPass : ICompilerPass
         var firstBranchOrTop = branchNodes.Count > 0 ? BranchLabel(0) : "loop_top";
         var testInstr = $"if {wl.Variable} eq {wl.Value}";
         blocks.Add(new("while_test", [testInstr], "exit", firstBranchOrTop));
+
+        blocks.Add(new("exit", [], null, null));
+        return blocks;
+    }
+
+    // Lowers a do-while interactive loop:
+    //   entry: [RandomNode inits] [program-level prints] → read_step
+    //   read_step: [InputNodes inside while body] → first_check
+    //   check_{condition}: if lhs op rhs → print_{condition} / next_check
+    //   print_{condition}: print "..." → read_step (loop back) or exit (on eq/correct)
+    //   exit:
+    private static List<CfgBlock> LowerInteractiveWhileLoop(
+        IronLlm.Graph.SemanticGraph graph, WhileLoopNode wl)
+    {
+        var program = graph.Nodes.OfType<ProgramNode>().FirstOrDefault();
+        var nodeIndex = graph.Nodes.ToDictionary(n => n.Id);
+
+        // Program-level Contains children (RandomNodes, PrintNodes, InputNodes before the while).
+        var programContainsIds = program != null
+            ? graph.Edges
+                .Where(e => e.From == program.Id && e.Type == EdgeType.Contains)
+                .Select(e => e.To)
+                .ToList()
+            : [];
+
+        // While-body Contains children (InputNodes, BranchNodes).
+        var whileContainsIds = graph.Edges
+            .Where(e => e.From == wl.Id && e.Type == EdgeType.Contains)
+            .Select(e => e.To)
+            .ToList();
+
+        var whileBodyNodes = whileContainsIds
+            .Where(nodeIndex.ContainsKey)
+            .Select(id => nodeIndex[id])
+            .ToList();
+
+        // Build entry block: RandomNode inits + program-level prints.
+        var entryInstrs = new List<string>();
+        foreach (var id in programContainsIds)
+        {
+            if (!nodeIndex.TryGetValue(id, out var n)) continue;
+            switch (n)
+            {
+                case RandomNode rn:
+                    entryInstrs.Add($"rand_int {rn.Name} {rn.Min} {rn.Max}");
+                    break;
+                case PrintNode p:
+                    entryInstrs.Add(p.Template.StartsWith('{') && p.Template.EndsWith('}')
+                        ? $"print {p.Template.Trim('{', '}')}"
+                        : $"print \"{p.Template}\"");
+                    break;
+            }
+        }
+
+        // read_step block: all InputNodes inside the while body.
+        var readInstrs = new List<string>();
+        foreach (var n in whileBodyNodes)
+        {
+            if (n is InputNode inp)
+                readInstrs.Add(inp.Type.Equals("int", StringComparison.OrdinalIgnoreCase)
+                    ? $"read_int {inp.Name}"
+                    : $"read {inp.Name}");
+        }
+
+        // Gather comparison-based branch nodes in Contains order.
+        var cmpBranches = new List<(BranchNode Branch, ComparisonNode Cmp)>();
+        foreach (var n in whileBodyNodes.OfType<BranchNode>())
+        {
+            var cmpEdge = graph.Edges.FirstOrDefault(e => e.From == n.Id && e.Type == EdgeType.DependsOn);
+            if (cmpEdge == null) continue;
+            if (nodeIndex.TryGetValue(cmpEdge.To, out var cmpNode) && cmpNode is ComparisonNode cmp)
+                cmpBranches.Add((n, cmp));
+        }
+
+        // Default branch (no DependsOn edge) — exits the loop on the fallthrough path.
+        var cmpBranchIds = cmpBranches.Select(x => x.Branch.Id).ToHashSet();
+        var defaultBranch = whileBodyNodes.OfType<BranchNode>()
+            .FirstOrDefault(b => !cmpBranchIds.Contains(b.Id));
+
+        string PrintFor(BranchNode b)
+        {
+            var pe = graph.Edges.FirstOrDefault(e => e.From == b.Id && e.Type == EdgeType.TrueBranch);
+            return (pe != null && nodeIndex.TryGetValue(pe.To, out var pn) && pn is PrintNode pnp)
+                ? pnp.Template : b.Condition;
+        }
+
+        var firstCheckLabel = cmpBranches.Count > 0
+            ? $"check_{cmpBranches[0].Branch.Condition}"
+            : (defaultBranch != null ? $"print_{defaultBranch.Condition}" : "exit");
+
+        var blocks = new List<CfgBlock>();
+        blocks.Add(new("entry",     entryInstrs, "read_step", null));
+        blocks.Add(new("read_step", readInstrs,  firstCheckLabel, null));
+
+        for (var i = 0; i < cmpBranches.Count; i++)
+        {
+            var (branch, cmp) = cmpBranches[i];
+            var nextLabel = i + 1 < cmpBranches.Count
+                ? $"check_{cmpBranches[i + 1].Branch.Condition}"
+                : (defaultBranch != null ? $"print_{defaultBranch.Condition}" : "exit");
+
+            // Build check instruction.
+            var lhsVar = wl.Variable; // lhs is always the input variable
+            var rhs    = cmp.RhsVar != null ? $"{{{cmp.RhsVar}}}" : cmp.Value.ToString();
+            var checkInstr = $"if {lhsVar} {cmp.Op} {rhs}";
+
+            // lt/gt: Clt/Cgt → Brtrue to SuccessorFalse (print block).
+            //    SuccessorTrue=next, SuccessorFalse=print.
+            // eq: Ceq → Brfalse to SuccessorFalse (next check).
+            //    SuccessorTrue=print, SuccessorFalse=next.
+            if (cmp.Op == "eq")
+                blocks.Add(new($"check_{branch.Condition}", [checkInstr], $"print_{branch.Condition}", nextLabel));
+            else
+                blocks.Add(new($"check_{branch.Condition}", [checkInstr], nextLabel, $"print_{branch.Condition}"));
+
+            var template = PrintFor(branch);
+            var printInstr = template.StartsWith('{') && template.EndsWith('}')
+                ? $"print {template.Trim('{', '}')}"
+                : $"print \"{template}\"";
+            // eq branch (correct guess): exit. All others: loop back to read_step.
+            var afterPrint = cmp.Op == "eq" ? "exit" : "read_step";
+            blocks.Add(new($"print_{branch.Condition}", [printInstr], afterPrint, null));
+        }
+
+        if (defaultBranch != null)
+        {
+            var template = PrintFor(defaultBranch);
+            var printInstr = template.StartsWith('{') && template.EndsWith('}')
+                ? $"print {template.Trim('{', '}')}"
+                : $"print \"{template}\"";
+            blocks.Add(new($"print_{defaultBranch.Condition}", [printInstr], "exit", null));
+        }
 
         blocks.Add(new("exit", [], null, null));
         return blocks;

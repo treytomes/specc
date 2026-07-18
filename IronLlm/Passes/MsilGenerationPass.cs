@@ -69,6 +69,15 @@ public class MsilGenerationPass : ICompilerPass
                             localOrder.Add(instr.Operand);
                     }
                     break;
+                case OpCode.RandInt:
+                    // operand = "name:min:max" — the name is an int32 local
+                    if (instr.Operand != null)
+                    {
+                        var randName = instr.Operand.Split(':')[0];
+                        if (!localOrder.Contains(randName))
+                            localOrder.Add(randName);
+                    }
+                    break;
             }
         }
 
@@ -132,6 +141,20 @@ public class MsilGenerationPass : ICompilerPass
             }
             else
             {
+                if (instr.Op == OpCode.RandInt)
+                {
+                    var parts    = instr.Operand!.Split(':');
+                    var rName    = parts[0];
+                    var rMin     = parts[1];
+                    var rMax     = parts[2];
+                    var rIdx     = localOrder.IndexOf(rName);
+                    line = $"    call class [mscorlib]System.Random [mscorlib]System.Random::get_Shared()\n" +
+                           $"    ldc.i4 {rMin}\n" +
+                           $"    ldc.i4 {rMax}\n" +
+                           $"    callvirt instance int32 [mscorlib]System.Random::Next(int32, int32)\n" +
+                           $"    stloc.{rIdx}";
+                }
+                else
                 line = instr.Op switch
                 {
                     OpCode.Label    => $"  {instr.Operand}:",

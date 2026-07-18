@@ -115,6 +115,13 @@ public static class SpecConstructLibrary
             condition: ne | eq | lt | gt
             value: <int>
 
+        For a while loop that compares two variables (e.g. "repeat until guess equals target"), use:
+
+          while:
+            compare_lhs: {variable}
+            compare: ne | eq | lt | gt
+            compare_rhs: {variable}
+
         Inside a while: body, conditional assignments use true_assign: instead of true_output::
 
           branch:
@@ -128,6 +135,29 @@ public static class SpecConstructLibrary
 
         A branch: with no divisor inside a while: is the default/else path (assign always executed).
         Multiple true_assign: blocks under one branch: are executed in order.
+
+        For a while loop with runtime comparisons (lt/gt/eq between a variable and another variable),
+        use compare: and compare_with: on branch: blocks instead of divisor::
+
+          branch:
+            condition: <snake_case_name>
+            compare: lt | gt | eq
+            compare_with: {variable}    # variable rhs instead of value: <int>
+            true_output: "<string>"
+
+        """;
+
+    public static string RandomSection => """
+
+        For programs that need a random integer, use random::
+
+          random:
+            name: <identifier>
+            min: <int>
+            max: <int>
+
+        This declares a variable whose value is a random integer in [min, max] (inclusive).
+        Use the variable name with braces ({name}) to reference it in branch: or print: blocks.
 
         """;
 
@@ -151,6 +181,7 @@ public static class SpecConstructLibrary
                 "input"      => InputSection,
                 "array"      => ArraySection,
                 "while"      => WhileSection,
+                "random"     => RandomSection,
                 _            => "",
             });
         }

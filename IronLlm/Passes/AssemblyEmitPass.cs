@@ -87,6 +87,14 @@ public class AssemblyEmitPass : ICompilerPass
                             localOrder.Add(instr.Operand);
                     }
                     break;
+                case IrOp.RandInt:
+                    if (instr.Operand != null)
+                    {
+                        var randName = instr.Operand.Split(':')[0];
+                        if (!localOrder.Contains(randName))
+                            localOrder.Add(randName);
+                    }
+                    break;
             }
         }
 
@@ -157,6 +165,19 @@ public class AssemblyEmitPass : ICompilerPass
                     break;
                 case IrOp.Clt:
                     il.Emit(OpCodes.Clt);
+                    break;
+                case IrOp.RandInt:
+                    var randParts = instr.Operand!.Split(':');
+                    var randLocalName = randParts[0];
+                    var randMin  = int.Parse(randParts[1]);
+                    var randMax  = int.Parse(randParts[2]);
+                    var randShared = typeof(Random).GetProperty("Shared")!;
+                    var randNext   = typeof(Random).GetMethod("Next", [typeof(int), typeof(int)])!;
+                    il.EmitCall(OpCodes.Call, randShared.GetGetMethod()!, null);
+                    il.Emit(OpCodes.Ldc_I4, randMin);
+                    il.Emit(OpCodes.Ldc_I4, randMax);
+                    il.EmitCall(OpCodes.Callvirt, randNext, null);
+                    il.Emit(OpCodes.Stloc, localBuilders[randLocalName]);
                     break;
                 case IrOp.Intrinsic:
                     var descriptor = IronLlm.Graph.IntrinsicLibrary.Get(instr.Operand!);

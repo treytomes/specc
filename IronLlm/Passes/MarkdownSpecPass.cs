@@ -180,7 +180,7 @@ public class MarkdownSpecPass : ICompilerPass
         catch
         {
             _logger.LogWarning("Classifier call failed — falling back to full construct set");
-            return ["loop", "branch", "arithmetic", "input", "array", "while"];
+            return ["loop", "branch", "arithmetic", "input", "array", "while", "random"];
         }
     }
 
@@ -306,6 +306,7 @@ public class MarkdownSpecPass : ICompilerPass
                                         && !specText.Contains("array[int]"))      missing.Add("array construct");
         if (tags.Contains("branch")     && !specText.Contains("branch:"))         missing.Add("branch:");
         if (tags.Contains("loop")       && !specText.Contains("loop:"))           missing.Add("loop:");
+        if (tags.Contains("random")     && !specText.Contains("random:"))         missing.Add("random:");
         return missing;
     }
 
@@ -400,7 +401,7 @@ public class MarkdownSpecPass : ICompilerPass
     private const string ClassifierSystemPrompt = """
         You are a program classifier. Read the program description and return a JSON array
         of construct families it requires. Choose from: "loop", "branch", "arithmetic",
-        "input", "array", "while". Include a tag if there is any chance the construct is
+        "input", "array", "while", "random". Include a tag if there is any chance the construct is
         needed — it is better to include an extra tag than to miss one.
 
         Tag meanings:
@@ -412,6 +413,8 @@ public class MarkdownSpecPass : ICompilerPass
           "while"      — repeat until a condition is met; number of iterations not known in advance;
                          phrases like "keep going until", "repeat until", "go back to step N",
                          "loop until N equals", "stop when" all indicate "while"
+          "random"     — generate a random number at runtime; phrases like "pick a random number",
+                         "choose a random value", "random integer" indicate "random"
 
         Examples:
           "FizzBuzz from 1 to 100, print Fizz/Buzz"              → ["loop","branch"]
@@ -421,6 +424,7 @@ public class MarkdownSpecPass : ICompilerPass
           "Read int, compare to 42, print hint"                  → ["input","branch"]
           "Read a number. Repeat: print it, halve if even, else×3+1. Stop when 1." → ["input","arithmetic","while"]
           "Keep dividing until you reach 1"                      → ["input","arithmetic","while"]
+          "Pick a random number, keep guessing until correct"    → ["input","branch","while","random"]
 
         Return only the JSON array.
         """;

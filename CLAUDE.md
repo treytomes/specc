@@ -45,6 +45,7 @@ Each pass implements `ICompilerPass` (`Name`, `ArtifactFile`, `ExecuteAsync`, `L
 | 03 | `EmbeddingPass` | `03-embeddings.json` | mxbai-embed-large via Ollama — one call per non-`AssertionNode`, non-`ArithmeticNode`, non-`AssignNode` |
 | 03b | `SemanticNormalizationPass` | `03b-normalized-graph.json` | Cosine similarity against reference corpus; reclassifies and relabels nodes below threshold 0.60. `ArithmeticNode`/`AssignNode` are exact-typed from the parsed spec and skip this gate. |
 | 03c | `RepositoryRetrievalPass` | (no artifact) | Retrieves similar prior compilations from the graph repository; populates `context.PriorCompilations` |
+| 03a | `NodeMlpPass` | `03a-refined-embeddings.json` | Per-kind MLP refines raw embeddings; runs after normalization and retrieval so those passes see the unmodified Ollama vector space |
 | 04 | `CfgPass` | `04-cfg.json` | Deterministic structural lowering; dispatches on graph shape (flat loop / bubble sort / selection sort) |
 | 05 | `StackIrPass` | `05-stackir.json` | Pattern-match CFG instructions → stack opcodes |
 | 06 | `MsilGenerationPass` | `06-program.il` | Stack IR → IL assembly text |
@@ -76,40 +77,52 @@ loop:
 
 branch:
   condition: <snake_case>
-  divisor: <int>           # omit for the default branch
-  compare: lt | gt | eq    # runtime comparison (alternative to divisor:)
-  value: <int>             # integer rhs when using compare:
-  true_output: "<string>"  # quoted string, or {variable}
+  divisor: <int>              # omit for the default branch
+  compare: lt | gt | eq       # runtime comparison (alternative to divisor:)
+  value: <int>                # integer rhs when using compare:
+  compare_with: {variable}    # variable rhs for var-vs-var comparison
+  true_output: "<string>"     # quoted string, or {variable}
 
 variable:
   name: <identifier>
   type: <type>
-  initial_value: <int>     # optional; sets the variable before the loop
-  source: stdin            # optional; read from stdin at runtime
+  initial_value: <int>        # optional; sets the variable before the loop
+  source: stdin               # optional; read from stdin at runtime
 
 assign:
   target: <identifier>
   op: mul | add | sub | div | copy
   left: {variable} | <int>
-  right: {variable} | <int> # omit when op is copy
+  right: {variable} | <int>   # omit when op is copy
+
+random:
+  name: <identifier>
+  min: <int>
+  max: <int>                  # inclusive; generates Random.Shared.Next(min, max+1)
 
 while:
-  variable: <identifier>
+  variable: <identifier>      # simple var-vs-int form
   condition: ne | eq | lt | gt
   value: <int>
+
+while:                        # var-vs-var form (interactive loop)
+  compare_lhs: {variable}
+  compare: ne | eq | lt | gt
+  compare_rhs: {variable} | <int>
 
 # Inside a while: body, branch: blocks may use true_assign: instead of true_output:
 branch:
   condition: <snake_case>
-  divisor: <int>             # optional; modulo check
-  true_assign:               # one or more; assign body executed when condition is true
+  divisor: <int>              # optional; modulo check
+  compare_with: {variable}    # var-vs-var comparison inside while body
+  true_assign:                # one or more; assign body executed when condition is true
     target: <identifier>
     op: mul | add | sub | div | copy
     left: {variable} | <int>
     right: {variable} | <int>
 ```
 
-Branches are evaluated in declaration order. The `default` branch (no `divisor`) provides the fallback output. `assign:` blocks express arithmetic and variable copies. When `assign:` blocks are present, all `branch:`/`divisor:` entries are treated as LLM noise and dropped by `CfgPass`. For comparison-based branching (no loop), use `compare:` + `value:` instead of `divisor:` — `CfgPass` dispatches to `LowerComparisonBranch`. Alternatively, pass a `.md` file and `MarkdownSpecPass` will extract the spec from prose.
+Branches are evaluated in declaration order. The `default` branch (no `divisor`) provides the fallback output. `assign:` blocks express arithmetic and variable copies. When `assign:` blocks are present, all `branch:`/`divisor:` entries are treated as LLM noise and dropped by `CfgPass`. For comparison-based branching (no loop), use `compare:` + `value:` instead of `divisor:` — `CfgPass` dispatches to `LowerComparisonBranch`. For var-vs-var comparison, use `compare_with: {variable}` instead of `value:`. The var-vs-var `while:` form (with `compare_lhs:`/`compare_rhs:`) lowers to an interactive do-while CFG. Alternatively, pass a `.md` file and `MarkdownSpecPass` will extract the spec from prose.
 
 ## Running
 
@@ -157,6 +170,7 @@ The compiled executable is written to `<artifacts-dir>/<ProgramName>` and is dir
 | Guesser | Read int from stdin, compare to 42, print hint | Pass (3/3 test cases) |
 | Calculator | Read two ints from stdin, print their sum | Pass (3/3 test cases) |
 | Collatz | Read int from stdin, run Collatz sequence, while loop + div/mul/add | Pass (3/3 test cases) |
+| GuessingGame | Random target 1–100, stdin guesses, while loop + var-vs-var comparison | Pass |
 
 ## Upcoming work
 
@@ -165,13 +179,10 @@ See `specs/incomplete/` for detailed design docs:
 | Spec | Title | Notes |
 |------|-------|-------|
 | 41 | Node MLP training loop | Offline contrastive + type-classification loss over `Contains`/`DependsOn` edges only; CFG back-edges excluded to avoid recurrent gradient paths |
+| 42 | User-defined intrinsics | `intrinsics.json` alongside `.md` loads third-party .NET assemblies; `call:` spec construct emits named intrinsics directly; unblocks OpenTK, Terminal.Gui etc. |
 | 20 | Roadmap to self-hosting | Long-horizon exploration |
 | 21 | Direct graph extraction | Skip MarkdownSpecPass for well-formed inputs — deferred, needs ≥7B model |
 | 29 | Greetings example | `InputNode`, string variables, linear CFG, stdin acceptance testing |
 | 35 | Embedding geometry validation | `scripts/geometry.py` — 2/3 cluster checks pass; BubbleSort↔SelectionSort narrowly fails vs BubbleSort↔FizzBuzz (0.928 vs 0.932) |
-| 37 | GuessingGame example | Blockers: `random:`, `compare_with: {var}`, `while:` loop |
 | 40 | Construct library worked examples | Add a minimal complete `.spec` example to each `SpecConstructLibrary` section to improve structural reliability |
 
-## Notes
-
-- **Collatz pipeline re-run pending**: Spec 36 (construct router) is now implemented. Delete `examples/Collatz/artifacts/` and re-run `scripts/run.sh examples/Collatz/Collatz.md` to test whether the `while` family tag gives ministral-3b enough signal to produce a correct extraction.

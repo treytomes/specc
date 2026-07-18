@@ -49,24 +49,45 @@ public class SemanticGraphPass : ICompilerPass
         int? pendingBranchDivisor = null;
         string? pendingBranchCompare = null;
         int? pendingBranchValue = null;
+        string? pendingBranchCompareWith = null;
         BranchNode? lastBranch = null;
 
         // while: loop state
         WhileLoopNode? whileNode = null;
-        string? whileVariable = null, whileCondition = null;
+        string? whileVariable = null, whileCondition = null, whileRhsVar = null;
         int? whileValue = null;
         bool inWhile = false;
 
         void FlushWhile()
         {
-            if (whileVariable == null || whileCondition == null || !whileValue.HasValue) return;
-            whileNode = new WhileLoopNode(
-                Guid.NewGuid(),
-                $"WhileLoop:{whileVariable}{whileCondition}{whileValue}",
-                whileVariable, whileCondition, whileValue.Value);
+            if (whileVariable == null || whileCondition == null) return;
+            if (!whileValue.HasValue && whileRhsVar == null) return;
+            whileNode = whileRhsVar != null
+                ? new WhileLoopNode(
+                    Guid.NewGuid(),
+                    $"WhileLoop:{whileVariable}{whileCondition}{whileRhsVar}",
+                    whileVariable, whileCondition, 0, whileRhsVar)
+                : new WhileLoopNode(
+                    Guid.NewGuid(),
+                    $"WhileLoop:{whileVariable}{whileCondition}{whileValue}",
+                    whileVariable, whileCondition, whileValue!.Value);
             graph.Add(whileNode);
             if (program != null) graph.Connect(program.Id, whileNode.Id, EdgeType.Contains);
-            whileVariable = null; whileCondition = null; whileValue = null;
+            whileVariable = null; whileCondition = null; whileValue = null; whileRhsVar = null;
+        }
+
+        // random: state
+        bool inRandom = false;
+        string? randomName = null;
+        int? randomMin = null, randomMax = null;
+
+        void FlushRandom()
+        {
+            if (randomName == null || !randomMin.HasValue || !randomMax.HasValue) return;
+            var rn = new RandomNode(Guid.NewGuid(), $"Random:{randomName}", randomName, randomMin.Value, randomMax.Value);
+            graph.Add(rn);
+            if (program != null) graph.Connect(program.Id, rn.Id, EdgeType.Contains);
+            randomName = null; randomMin = null; randomMax = null;
         }
 
         // true_assign: state — assign body for a branch condition (sequentially executed)
@@ -108,9 +129,12 @@ public class SemanticGraphPass : ICompilerPass
                 var varType = inlineVarType ?? "string";
                 var inp = new InputNode(Guid.NewGuid(), $"Input:{inlineVarName}", inlineVarName, varType);
                 graph.Add(inp);
-                // Defer Contains edge; emitted in order after the loop for linear programs.
-                // Loop programs emit the edge immediately via the existing code path.
-                linearContainsOrder.Add(inp);
+                if (whileNode != null)
+                    // Inside a while body: connect directly so LowerInteractiveWhileLoop finds it.
+                    graph.Connect(whileNode.Id, inp.Id, EdgeType.Contains);
+                else
+                    // Defer Contains edge; emitted in order after the loop for linear programs.
+                    linearContainsOrder.Add(inp);
             }
             inlineVarName = null; inlineVarType = null; inlineVarSource = null;
         }
@@ -139,15 +163,37 @@ public class SemanticGraphPass : ICompilerPass
                 FlushInlineVar(); inInlineVar = false;
                 FlushInlineAssign(); inInlineAssign = false;
                 FlushTrueAssign(); inTrueAssign = false;
+                FlushRandom(); inRandom = false;
                 var name = line["program:".Length..].Trim();
                 program = new ProgramNode(Guid.NewGuid(), $"Program:{name}", name);
                 graph.Add(program);
+            }
+            else if (line == "random:")
+            {
+                FlushInlineVar(); inInlineVar = false;
+                FlushInlineAssign(); inInlineAssign = false;
+                FlushTrueAssign(); inTrueAssign = false;
+                FlushRandom();
+                inRandom = true;
+            }
+            else if (inRandom && line.StartsWith("name:"))
+            {
+                randomName = line["name:".Length..].Trim();
+            }
+            else if (inRandom && line.StartsWith("min:"))
+            {
+                if (int.TryParse(line["min:".Length..].Trim(), out var rv)) randomMin = rv;
+            }
+            else if (inRandom && line.StartsWith("max:"))
+            {
+                if (int.TryParse(line["max:".Length..].Trim(), out var rv)) randomMax = rv;
             }
             else if (line == "while:")
             {
                 FlushInlineVar(); inInlineVar = false;
                 FlushInlineAssign(); inInlineAssign = false;
                 FlushTrueAssign(); inTrueAssign = false;
+                FlushRandom(); inRandom = false;
                 inWhile = true;
             }
             else if (line.StartsWith("branch:"))
@@ -155,17 +201,20 @@ public class SemanticGraphPass : ICompilerPass
                 FlushInlineVar(); inInlineVar = false;
                 FlushInlineAssign(); inInlineAssign = false;
                 FlushTrueAssign(); inTrueAssign = false;
+                FlushRandom(); inRandom = false;
                 if (inWhile) { FlushWhile(); inWhile = false; }
                 pendingBranchCondition = null;
                 pendingBranchDivisor = null;
                 pendingBranchCompare = null;
                 pendingBranchValue = null;
+                pendingBranchCompareWith = null;
                 lastBranch = null;
             }
             else if (line == "variable:")
             {
                 FlushInlineVar();
                 FlushInlineAssign(); inInlineAssign = false;
+                if (inWhile) { FlushWhile(); inWhile = false; }
                 inInlineVar = true;
             }
             else if (line == "assign:")
@@ -178,19 +227,48 @@ public class SemanticGraphPass : ICompilerPass
             {
                 FlushTrueAssign();
                 inTrueAssign = true;
+                // If no condition: was seen before true_assign: (malformed LLM extraction),
+                // create a default branch node now so FlushTrueAssign has a parent to connect to.
+                if (lastBranch == null)
+                {
+                    var condition = pendingBranchCondition ?? "default";
+                    lastBranch = new BranchNode(Guid.NewGuid(), $"Branch:{condition}", condition);
+                    graph.Add(lastBranch);
+                    var branchContainer = whileNode as Node ?? program;
+                    if (branchContainer != null)
+                        graph.Connect(branchContainer.Id, lastBranch.Id, EdgeType.Contains);
+                }
             }
-            else if (inWhile && line.StartsWith("variable:"))
+            else if (inWhile && line.StartsWith("variable:") && line["variable:".Length..].Trim().Length > 0)
             {
+                // Old-style while: variable: n (name on same line)
                 whileVariable = line["variable:".Length..].Trim();
+            }
+            else if (inWhile && line.StartsWith("compare_lhs:"))
+            {
+                // compare_lhs: {varName} — strip braces
+                whileVariable = line["compare_lhs:".Length..].Trim().Trim('{', '}');
             }
             else if (inWhile && line.StartsWith("condition:"))
             {
                 whileCondition = line["condition:".Length..].Trim();
             }
+            else if (inWhile && line.StartsWith("compare:"))
+            {
+                whileCondition = line["compare:".Length..].Trim();
+            }
             else if (inWhile && line.StartsWith("value:"))
             {
                 if (int.TryParse(line["value:".Length..].Trim(), out var wv))
                     whileValue = wv;
+            }
+            else if (inWhile && line.StartsWith("compare_rhs:"))
+            {
+                var raw = line["compare_rhs:".Length..].Trim();
+                if (int.TryParse(raw, out var wv))
+                    whileValue = wv;
+                else
+                    whileRhsVar = raw.Trim('{', '}');
             }
             else if (inInlineVar && line.StartsWith("name:"))
             {
@@ -283,6 +361,11 @@ public class SemanticGraphPass : ICompilerPass
                 if (int.TryParse(line["value:".Length..].Trim(), out var v))
                     pendingBranchValue = v;
             }
+            else if (line.StartsWith("compare_with:"))
+            {
+                // compare_with: {varName} — variable rhs for a branch comparison
+                pendingBranchCompareWith = line["compare_with:".Length..].Trim().Trim('{', '}');
+            }
 
             if (line.StartsWith("print:") && !line.StartsWith("program:"))
             {
@@ -313,7 +396,20 @@ public class SemanticGraphPass : ICompilerPass
                         graph.Connect(branchContainer.Id, lastBranch.Id, EdgeType.Contains);
                 }
 
-                if (pendingBranchCompare != null && pendingBranchValue.HasValue)
+                if (pendingBranchCompare != null && pendingBranchCompareWith != null)
+                {
+                    // Variable-rhs comparison: emit ComparisonNode with RhsVar set.
+                    var cmpNode = new ComparisonNode(
+                        Guid.NewGuid(),
+                        $"Comparison:{pendingBranchCompare}:{pendingBranchCompareWith}",
+                        pendingBranchCompare,
+                        0,
+                        pendingBranchCompareWith);
+                    graph.Add(cmpNode);
+                    graph.Connect(lastBranch.Id, cmpNode.Id, EdgeType.DependsOn);
+                    pendingBranchCompareWith = null;
+                }
+                else if (pendingBranchCompare != null && pendingBranchValue.HasValue)
                 {
                     // Comparison-based branch: emit ComparisonNode with op and value.
                     var cmpNode = new ComparisonNode(
@@ -340,6 +436,7 @@ public class SemanticGraphPass : ICompilerPass
         FlushInlineVar();    // flush trailing stdin variable if at end of spec
         FlushInlineAssign(); // flush trailing assign if at end of spec
         FlushTrueAssign();   // flush trailing true_assign if at end of spec
+        FlushRandom();       // flush trailing random block if at end of spec
         if (inWhile) FlushWhile();
 
         BuildLoopNode(lines, graph, program);
@@ -384,8 +481,9 @@ public class SemanticGraphPass : ICompilerPass
         var hasDirectPrint = program != null && graph.Edges
             .Any(e => e.From == program.Id && e.Type == EdgeType.Contains
                       && graph.Nodes.OfType<PrintNode>().Any(p => p.Id == e.To));
-        var hasInput = graph.Nodes.OfType<InputNode>().Any();
-        if (!graph.Nodes.OfType<LoopNode>().Any() && !hasDirectPrint && !hasInput)
+        var hasInput  = graph.Nodes.OfType<InputNode>().Any();
+        var hasRandom = graph.Nodes.OfType<RandomNode>().Any();
+        if (!graph.Nodes.OfType<LoopNode>().Any() && !hasDirectPrint && !hasInput && !hasRandom)
             _logger.LogWarning("No loop: section found in spec — graph may be incomplete");
         if (!graph.Nodes.OfType<VariableNode>().Any() && !graph.Nodes.OfType<InputNode>().Any())
             _logger.LogWarning("No variable: section found in spec — graph may be incomplete");

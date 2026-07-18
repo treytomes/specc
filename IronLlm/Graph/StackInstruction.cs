@@ -27,6 +27,7 @@ public enum OpCode
     StlocStr,  // store string local; operand = variable name
     Clt,       // compare less-than; pops two ints, pushes 1 if second < top
     Div,       // integer divide; pops two ints, pushes quotient
+    RandInt,   // Random.Shared.Next(min, max+1) → store; operand = "name:min:max"
 }
 
 public record StackInstruction(OpCode Op, string? Operand = null);
