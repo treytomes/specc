@@ -88,7 +88,7 @@ Every pass after this is deterministic.  The spec becomes a semantic graph.  The
 
 Here's the amazing part: the LLM doesn't actually write the program.  I was surprised at this outcome as I worked through the problem.  It's the assumption I began this experiment with.
 
-Specc uses two models.  The first is a small language model (ministral-3b) that does one thing: read your prose and extract the structured spec you saw above.  That's its entire role.  It doesn't touch the graph, the CFG, the IL, or the binary.
+Specc uses two models.  The first is a small language model (e.g. ministral-3b, qwen2.5-coder:3b-instruct) that does one thing: read your prose and extract the structured spec you saw above.  That's its entire role.  It doesn't touch the graph, the CFG, the IL, or the binary.
 
 The second is an embedding model (mxbai-embed-large).  After the semantic graph is built, it runs once per node and attaches a vector to each one - a point in high-dimensional space that encodes what that node *means*.  A loop node and a while node end up close together.  A branch node and a print node don't.  The embeddings are metadata on the graph; they don't change its structure or drive any control flow decisions.
 
@@ -108,6 +108,6 @@ An interesting side-effect of this repository: because it stores the raw spec te
 
 This brings a new experiment to the forefront: if programs are graphs with semantic embeddings, two programs that implement the same intent should cluster together.  You should be able to search a repository of compiled programs by meaning.  You should be able to ask whether a new spec is structurally similar to something you've already built, or whether it requires new machinery.  Graph structure might even be refined by gradient - nudging the embedding space so that semantically equivalent programs converge, and semantically distinct ones don't.
 
-I don't know yet whether any of that will work.  But the pipeline compiles FizzBuzz, Fibonacci, BubbleSort, a guessing game with random numbers and interactive input, and a Collatz sequence runner.  It is technically "Turing complete" (quotes intended).  The spec-to-binary path is solid.  The interesting questions are now about what you can do with the graph.
+I don't know yet whether any of that will work.  But the pipeline compiles FizzBuzz, Fibonacci, BubbleSort, a guessing game with random numbers and interactive input, and a Collatz sequence runner.  It is technically "Turing complete" (quotes intended, the 3B model couldn't get there on its own).  The spec-to-binary path is solid.  The interesting questions are now about what you can do with the graph.
 
 The code is on GitHub.  Future articles will go deeper on specific passes - the semantic graph, the acceptance circuit, and the embedding geometry experiments.
