@@ -51,9 +51,26 @@ public class MarkdownSpecPass : ICompilerPass
 
         var missing = ConsistencyMissing(tags, extracted);
         if (missing.Count > 0)
+        {
             _logger.LogWarning(
-                "Extraction may be incomplete — classifier expected [{Tags}] but spec is missing: {Missing}",
+                "Extraction incomplete [{Tags}] missing {Missing} — retrying with full construct set",
                 string.Join(", ", tags), string.Join(", ", missing));
+            var fullTags  = new[] { "loop", "branch", "arithmetic", "input", "array", "while", "random" };
+            var retried   = await ExtractSpecAsync(markdown, fullTags, context.RepositoryPath);
+            // Only check whether the originally-missing constructs are now present — don't penalise
+            // the retry for not using array/random/loop that the program simply doesn't need.
+            var stillMissing = missing.Where(m => !retried.Contains(m, StringComparison.Ordinal)).ToList();
+            if (!retried.StartsWith("ERROR:", StringComparison.OrdinalIgnoreCase) && stillMissing.Count == 0)
+            {
+                tags      = fullTags;
+                extracted = retried;
+                missing   = [];
+            }
+            else
+            {
+                _logger.LogWarning("Retry did not resolve missing constructs — proceeding with original extraction");
+            }
+        }
 
         ValidateExtracted(extracted, context.SpecPath);
 
