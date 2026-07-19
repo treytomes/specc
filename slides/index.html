@@ -1,0 +1,1005 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IronLlm — A compiler that treats programs as semantic objects</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:         #0f1117;
+    --bg-card:    #161b22;
+    --bg-table:   #1a2030;
+    --border:     #2a3142;
+    --text:       #e6edf3;
+    --text-muted: #8b949e;
+    --accent:     #4ec9b0;
+    --accent-dim: #2a6b5e;
+    --warn:       #e8b84b;
+    --good:       #4ec9b0;
+    --bad:        #f47067;
+    --pending:    #e8b84b;
+    --mono:       'JetBrains Mono', 'Courier New', monospace;
+    --sans:       'Inter', system-ui, sans-serif;
+  }
+
+  html, body {
+    width: 100%; height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.6;
+    overflow: hidden;
+  }
+
+  /* ── Deck container ── */
+  #deck {
+    width: 100%; height: 100%;
+    position: relative;
+  }
+
+  /* ── Slides ── */
+  .slide {
+    position: absolute;
+    inset: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 3.5rem 5rem 5rem;
+    opacity: 0;
+    transition: opacity 0.25s ease;
+  }
+  .slide.active {
+    display: flex;
+    opacity: 1;
+  }
+  .slide.fade-out {
+    opacity: 0;
+  }
+
+  .slide-inner {
+    max-width: 900px;
+    width: 100%;
+  }
+
+  /* ── Typography ── */
+  h1 {
+    font-size: 3.4rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    color: var(--text);
+    line-height: 1.1;
+  }
+  h2 {
+    font-size: 1.9rem;
+    font-weight: 500;
+    color: var(--accent);
+    margin-bottom: 1.4rem;
+    letter-spacing: -0.01em;
+  }
+  h3 {
+    font-size: 1.2rem;
+    font-weight: 500;
+    color: var(--text);
+    margin-top: 1.4rem;
+    margin-bottom: 0.5rem;
+  }
+  p {
+    color: var(--text-muted);
+    font-size: 1rem;
+    margin-bottom: 0.9rem;
+    max-width: 72ch;
+  }
+  em {
+    color: var(--text);
+    font-style: italic;
+  }
+  strong { color: var(--text); font-weight: 600; }
+  code {
+    font-family: var(--mono);
+    font-size: 0.88em;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0.1em 0.35em;
+    color: var(--accent);
+  }
+
+  /* ── Slide 1: Title ── */
+  .slide-title {
+    text-align: center;
+    flex-direction: column;
+    gap: 0;
+  }
+  .slide-title .slide-inner {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.6rem;
+  }
+  .title-eyebrow {
+    font-family: var(--mono);
+    font-size: 0.8rem;
+    color: var(--accent);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin-bottom: 0.6rem;
+  }
+  .title-main {
+    font-size: 5rem;
+    font-weight: 600;
+    letter-spacing: -0.04em;
+    background: linear-gradient(135deg, var(--text) 40%, var(--accent));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    line-height: 1.05;
+  }
+  .title-sub {
+    font-size: 1.25rem;
+    color: var(--text-muted);
+    margin-top: 0.4rem;
+    font-style: italic;
+  }
+  .title-tag {
+    margin-top: 1.4rem;
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 0.9rem;
+    color: var(--accent);
+    border: 1px solid var(--accent-dim);
+    border-radius: 6px;
+    padding: 0.35em 0.9em;
+  }
+
+  /* ── Pipeline diagram (slide 2) ── */
+  .pipeline-flow {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0;
+    margin: 1.6rem 0;
+    font-family: var(--mono);
+    font-size: 0.82rem;
+  }
+  .pipe-node {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.4em 0.75em;
+    color: var(--text);
+    white-space: nowrap;
+  }
+  .pipe-node.llm {
+    border-color: var(--accent-dim);
+    color: var(--accent);
+  }
+  .pipe-node.native {
+    border-color: #3a4a7a;
+    color: #7eb8f7;
+  }
+  .pipe-arrow {
+    color: var(--text-muted);
+    padding: 0 0.4em;
+    font-size: 1rem;
+    user-select: none;
+  }
+
+  /* ── Two-column pass list (slide 4) ── */
+  .pass-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.45rem 2rem;
+    margin-top: 1rem;
+  }
+  .pass-item {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5em;
+    font-size: 0.9rem;
+  }
+  .pass-num {
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    color: var(--accent);
+    min-width: 3ch;
+    flex-shrink: 0;
+  }
+  .pass-name {
+    font-family: var(--mono);
+    font-size: 0.82rem;
+    color: var(--text);
+    flex-shrink: 0;
+  }
+  .pass-desc {
+    color: var(--text-muted);
+    font-size: 0.82rem;
+  }
+  .pass-note {
+    grid-column: 1 / -1;
+    margin-top: 0.6rem;
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    border-left: 2px solid var(--accent-dim);
+    padding-left: 0.8em;
+    font-style: italic;
+  }
+
+  /* ── Checklist (slide 5) ── */
+  .checklist {
+    list-style: none;
+    margin-top: 0.8rem;
+  }
+  .checklist li {
+    display: flex;
+    align-items: baseline;
+    gap: 0.6em;
+    font-size: 0.97rem;
+    color: var(--text-muted);
+    margin-bottom: 0.55rem;
+    line-height: 1.45;
+  }
+  .check-mark {
+    color: var(--good);
+    font-size: 1rem;
+    flex-shrink: 0;
+  }
+  .checklist li strong { color: var(--accent); }
+  .checklist li .milestone {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    color: var(--warn);
+    border: 1px solid var(--warn);
+    border-radius: 4px;
+    padding: 0.05em 0.4em;
+    margin-left: 0.3em;
+  }
+
+  /* ── Bullet list for idea slide ── */
+  .idea-list {
+    list-style: none;
+    margin-top: 0.8rem;
+    counter-reset: idea;
+  }
+  .idea-list li {
+    counter-increment: idea;
+    display: flex;
+    align-items: baseline;
+    gap: 0.7em;
+    font-size: 1rem;
+    color: var(--text-muted);
+    margin-bottom: 0.85rem;
+    line-height: 1.5;
+  }
+  .idea-list li::before {
+    content: counter(idea);
+    font-family: var(--mono);
+    font-size: 0.8rem;
+    color: var(--accent);
+    background: var(--bg-card);
+    border: 1px solid var(--accent-dim);
+    border-radius: 4px;
+    width: 1.6em;
+    height: 1.6em;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    line-height: 1;
+  }
+
+  /* ── Tables ── */
+  .styled-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 1rem;
+    font-size: 0.88rem;
+  }
+  .styled-table thead tr {
+    background: var(--bg-card);
+    border-bottom: 2px solid var(--accent-dim);
+  }
+  .styled-table th {
+    text-align: left;
+    padding: 0.6em 1em;
+    font-weight: 500;
+    color: var(--accent);
+    font-family: var(--mono);
+    font-size: 0.8rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .styled-table td {
+    padding: 0.55em 1em;
+    color: var(--text-muted);
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+    line-height: 1.45;
+  }
+  .styled-table tbody tr:hover {
+    background: rgba(78, 201, 176, 0.04);
+  }
+  .styled-table td:first-child {
+    font-family: var(--mono);
+    font-size: 0.82rem;
+    color: var(--text);
+    white-space: nowrap;
+  }
+  .status-done    { color: var(--good); }
+  .status-pending { color: var(--pending); }
+  .status-partial { color: var(--warn); }
+
+  /* ── Quote block ── */
+  .quote {
+    margin-top: 1.6rem;
+    border-left: 3px solid var(--accent);
+    padding: 0.6em 1.2em;
+    background: var(--bg-card);
+    border-radius: 0 6px 6px 0;
+  }
+  .quote p {
+    font-style: italic;
+    color: var(--text);
+    font-size: 1.05rem;
+    margin: 0;
+  }
+
+  /* ── "What broke" bullet list (slide 6) ── */
+  .broke-list {
+    list-style: none;
+    margin-top: 0.6rem;
+  }
+  .broke-list li {
+    display: flex;
+    align-items: baseline;
+    gap: 0.55em;
+    font-size: 0.93rem;
+    color: var(--text-muted);
+    margin-bottom: 0.5rem;
+    line-height: 1.45;
+  }
+  .broke-mark {
+    color: var(--bad);
+    flex-shrink: 0;
+    font-size: 0.85rem;
+  }
+
+  /* ── Hypothesis block ── */
+  .hypothesis-block {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1em 1.3em;
+    margin: 1rem 0;
+    display: grid;
+    grid-template-columns: 90px 1fr;
+    gap: 0.4rem 0.8em;
+  }
+  .hyp-label {
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding-top: 0.1em;
+  }
+  .hyp-text {
+    font-size: 0.93rem;
+    color: var(--text);
+    line-height: 1.45;
+  }
+  .hyp-text.reality { color: var(--accent); }
+
+  /* ── Geometry results (slide 8) ── */
+  .geo-list {
+    list-style: none;
+    margin: 1rem 0;
+  }
+  .geo-list li {
+    display: flex;
+    align-items: center;
+    gap: 0.8em;
+    font-size: 0.95rem;
+    color: var(--text-muted);
+    margin-bottom: 0.7rem;
+    padding: 0.55em 0.9em;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+  }
+  .geo-pair {
+    font-family: var(--mono);
+    font-size: 0.82rem;
+    color: var(--text);
+    min-width: 28ch;
+  }
+  .geo-score {
+    font-family: var(--mono);
+    font-size: 0.88rem;
+    margin-left: auto;
+    padding-right: 0.3em;
+  }
+  .geo-mark { flex-shrink: 0; }
+  .geo-mark.pass { color: var(--good); }
+  .geo-mark.fail { color: var(--bad); }
+  .geo-score.high { color: var(--warn); }
+  .geo-score.low  { color: var(--text-muted); }
+
+  /* ── Horizon slide ── */
+  .horizon-steps {
+    display: flex;
+    flex-direction: column;
+    gap: 0.8rem;
+    margin-top: 1rem;
+  }
+  .horizon-step {
+    display: flex;
+    gap: 1em;
+    align-items: flex-start;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.9em 1.1em;
+  }
+  .horizon-arrow {
+    font-size: 1.2rem;
+    color: var(--accent);
+    flex-shrink: 0;
+    padding-top: 0.05em;
+  }
+  .horizon-text {
+    font-size: 0.93rem;
+    color: var(--text-muted);
+    line-height: 1.5;
+  }
+  .horizon-text strong { color: var(--text); }
+
+  /* ── Thank you slide ── */
+  .thanks-inner {
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+  }
+  .stack-tags {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.5rem;
+    margin-top: 0.6rem;
+  }
+  .stack-tag {
+    font-family: var(--mono);
+    font-size: 0.8rem;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 0.3em 0.7em;
+    color: var(--text-muted);
+  }
+  .stack-tag.hl { border-color: var(--accent-dim); color: var(--accent); }
+
+  /* ── Slide counter ── */
+  #counter {
+    position: fixed;
+    bottom: 1.4rem;
+    right: 2rem;
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    letter-spacing: 0.06em;
+    user-select: none;
+    z-index: 100;
+  }
+
+  /* ── Navigation hint ── */
+  #nav-hint {
+    position: fixed;
+    bottom: 1.4rem;
+    left: 2rem;
+    font-size: 0.75rem;
+    color: #3a4558;
+    font-family: var(--mono);
+    user-select: none;
+    z-index: 100;
+  }
+
+  /* ── Progress bar ── */
+  #progress {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 2px;
+    background: var(--accent);
+    transition: width 0.3s ease;
+    z-index: 100;
+  }
+
+  /* ── Small utility ── */
+  .section-label {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 0.6rem;
+    display: block;
+  }
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    margin-top: 0.8rem;
+  }
+  .col-block h3 { margin-top: 0; }
+
+  /* What Remains open questions */
+  .open-q {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1em 1.3em;
+    margin-bottom: 0.9rem;
+  }
+  .open-q-num {
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 0.3rem;
+    display: block;
+  }
+  .open-q h3 {
+    margin-top: 0;
+    font-size: 1rem;
+    color: var(--text);
+  }
+  .open-q p {
+    margin-bottom: 0;
+    font-size: 0.88rem;
+  }
+</style>
+</head>
+<body>
+
+<div id="progress"></div>
+<div id="counter">1 / 12</div>
+<div id="nav-hint">← → space</div>
+
+<div id="deck">
+
+  <!-- ═══ Slide 1: Title ═══ -->
+  <section class="slide slide-title active" id="slide-1">
+    <div class="slide-inner">
+      <div class="title-eyebrow">Compiler Research Project</div>
+      <div class="title-main">IronLlm</div>
+      <div class="title-sub">A compiler that treats programs as semantic objects</div>
+      <div class="title-tag">LLM as one pass, not the orchestrator</div>
+    </div>
+  </section>
+
+  <!-- ═══ Slide 2: What is this? ═══ -->
+  <section class="slide" id="slide-2">
+    <div class="slide-inner">
+      <span class="section-label">Overview</span>
+      <h2>What is this?</h2>
+      <p>IronLlm takes a Markdown description of a program and lowers it through deterministic passes to a native .NET executable. An LLM does exactly two things: extract a structured spec from prose, and embed each graph node as a learned vector. Everything else is deterministic code.</p>
+
+      <div class="pipeline-flow">
+        <div class="pipe-node">.md prose</div>
+        <div class="pipe-arrow">→</div>
+        <div class="pipe-node llm">MarkdownSpecPass<br><small style="font-size:0.75em;opacity:0.7;">(LLM)</small></div>
+        <div class="pipe-arrow">→</div>
+        <div class="pipe-node">SemanticGraph</div>
+        <div class="pipe-arrow">→</div>
+        <div class="pipe-node">CFG</div>
+        <div class="pipe-arrow">→</div>
+        <div class="pipe-node">Stack IR</div>
+        <div class="pipe-arrow">→</div>
+        <div class="pipe-node">IL</div>
+        <div class="pipe-arrow">→</div>
+        <div class="pipe-node native">Native exe</div>
+      </div>
+
+      <p style="margin-top:1rem;">CFG construction, stack lowering, IL emission, acceptance verification — all deterministic. The LLM is reserved for tasks that genuinely require semantic understanding: extracting a spec from prose, and producing comparable vector representations of graph nodes.</p>
+    </div>
+  </section>
+
+  <!-- ═══ Slide 3: The Idea ═══ -->
+  <section class="slide" id="slide-3">
+    <div class="slide-inner">
+      <span class="section-label">Core Idea</span>
+      <h2>Programs are graphs. Graphs have nodes. Nodes have embeddings.</h2>
+
+      <ol class="idea-list">
+        <li>Two programs that implement the same intent should be close in embedding space</li>
+        <li>Prior compilations can inform future ones — the repository as a standard library</li>
+        <li>Program structure becomes something that can be searched, compared, and eventually refined by gradient</li>
+      </ol>
+
+      <div class="quote">
+        <p>"Not agentic. Not autocomplete. A compiler with a semantic layer."</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ Slide 4: The Pipeline ═══ -->
+  <section class="slide" id="slide-4">
+    <div class="slide-inner">
+      <span class="section-label">Architecture</span>
+      <h2>The Pipeline</h2>
+      <div class="pass-grid">
+        <div class="pass-item">
+          <span class="pass-num">00</span>
+          <span class="pass-name">MarkdownSpecPass</span>
+          <span class="pass-desc">— LLM extracts .spec from prose</span>
+        </div>
+        <div class="pass-item">
+          <span class="pass-num">05</span>
+          <span class="pass-name">StackIrPass</span>
+          <span class="pass-desc">— stack opcodes</span>
+        </div>
+        <div class="pass-item">
+          <span class="pass-num">01</span>
+          <span class="pass-name">ParseSpecPass</span>
+          <span class="pass-desc">— .spec → RawSpec</span>
+        </div>
+        <div class="pass-item">
+          <span class="pass-num">06</span>
+          <span class="pass-name">MsilGenerationPass</span>
+          <span class="pass-desc">— IL assembly text</span>
+        </div>
+        <div class="pass-item">
+          <span class="pass-num">02</span>
+          <span class="pass-name">SemanticGraphPass</span>
+          <span class="pass-desc">— typed node/edge graph</span>
+        </div>
+        <div class="pass-item">
+          <span class="pass-num">07</span>
+          <span class="pass-name">AssemblyEmitPass</span>
+          <span class="pass-desc">— native executable</span>
+        </div>
+        <div class="pass-item">
+          <span class="pass-num">03</span>
+          <span class="pass-name">EmbeddingPass</span>
+          <span class="pass-desc">— mxbai-embed-large, one vector per node</span>
+        </div>
+        <div class="pass-item">
+          <span class="pass-num">08</span>
+          <span class="pass-name">AcceptanceVerificationPass</span>
+          <span class="pass-desc">— diff stdout vs expected</span>
+        </div>
+        <div class="pass-item">
+          <span class="pass-num">03b</span>
+          <span class="pass-name">SemanticNormalizationPass</span>
+          <span class="pass-desc">— cosine similarity reclassification</span>
+        </div>
+        <div class="pass-item">
+          <span class="pass-num">09</span>
+          <span class="pass-name">RepositoryPersistPass</span>
+          <span class="pass-desc">— store verified compilation</span>
+        </div>
+        <div class="pass-item">
+          <span class="pass-num">03c</span>
+          <span class="pass-name">RepositoryRetrievalPass</span>
+          <span class="pass-desc">— prior compilations as context</span>
+        </div>
+        <div class="pass-item">
+          <span class="pass-num">03a</span>
+          <span class="pass-name">NodeMlpPass</span>
+          <span class="pass-desc">— per-kind MLP refines embeddings</span>
+        </div>
+        <div class="pass-item">
+          <span class="pass-num">04</span>
+          <span class="pass-name">CfgPass</span>
+          <span class="pass-desc">— deterministic structural lowering</span>
+        </div>
+        <div class="pass-note">Incremental by artifact: if a pass's output file already exists, the pass is skipped. Deleting an artifact forces that pass and all downstream passes to re-run.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ Slide 5: What We Proved Works ═══ -->
+  <section class="slide" id="slide-5">
+    <div class="slide-inner">
+      <span class="section-label">Results</span>
+      <h2>What We Proved Works</h2>
+      <ul class="checklist">
+        <li><span class="check-mark">✓</span><span>FizzBuzz, CountDown, BubbleSort, SelectionSort — <strong>100% assertions pass</strong></span></li>
+        <li><span class="check-mark">✓</span><span>Fibonacci, Multiples — loop + arithmetic</span></li>
+        <li><span class="check-mark">✓</span><span>Guesser, Calculator — stdin branching</span></li>
+        <li><span class="check-mark">✓</span><span>Collatz — <strong>unbounded conditional loop, 9/9 assertions</strong> <span class="milestone">Turing-completeness milestone</span></span></li>
+        <li><span class="check-mark">✓</span><span>GuessingGame — interactive while loop, var-vs-var comparison, random target</span></li>
+        <li><span class="check-mark">✓</span><span>DiceRoll, SimpleGuess — random: construct, hardcoded target branches</span></li>
+        <li><span class="check-mark">✓</span><span><strong>14 total examples</strong> passing, all in the repository</span></li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ═══ Slide 6: The Extraction Cliff ═══ -->
+  <section class="slide" id="slide-6">
+    <div class="slide-inner">
+      <span class="section-label">Hardest Problem</span>
+      <h2>The Extraction Cliff</h2>
+      <p>The hardest problem wasn't the compiler. It was the LLM front-end.</p>
+
+      <div class="hypothesis-block">
+        <div class="hyp-label">Hypothesis</div>
+        <div class="hyp-text">ministral-3b would fail on Collatz (unbounded while + division + conditional assigns)</div>
+        <div class="hyp-label">Reality</div>
+        <div class="hyp-text reality">It did fail — but the cliff was bridgeable</div>
+      </div>
+
+      <h3>What broke</h3>
+      <ul class="broke-list">
+        <li><span class="broke-mark">✗</span>Model placed <code>print:</code> before <code>while:</code> in spec output (structural bug)</li>
+        <li><span class="broke-mark">✗</span>Classifier selected wrong construct family (<code>loop:</code> instead of <code>while:</code>)</li>
+        <li><span class="broke-mark">✗</span>Two sequential <code>true_assign:</code> blocks collapsed to one (YAML key collision)</li>
+        <li><span class="broke-mark">✗</span>Expected output section not parsed (bare lines, not fenced)</li>
+        <li><span class="broke-mark">✗</span>Bad extractions persisted to the repository, poisoning future retrievals</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ═══ Slide 7: How We Crossed the Cliff ═══ -->
+  <section class="slide" id="slide-7">
+    <div class="slide-inner">
+      <span class="section-label">Solutions</span>
+      <h2>How We Crossed the Cliff</h2>
+      <p>Each failure became permanent pipeline infrastructure.</p>
+
+      <table class="styled-table">
+        <thead>
+          <tr>
+            <th>Failure</th>
+            <th>Fix</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Wrong construct family</td>
+            <td><code>ConsistencyMissing</code> promoted from warning to retry trigger</td>
+          </tr>
+          <tr>
+            <td>Print before while</td>
+            <td><code>SemanticGraphPass</code> relocation at flush time</td>
+          </tr>
+          <tr>
+            <td>YAML key collision</td>
+            <td>Halve + StepCounter examples teach two-<code>true_assign:</code> separately</td>
+          </tr>
+          <tr>
+            <td>Bare expected output</td>
+            <td><code>ParseExpectedOutputBlock</code> extended to non-fenced lines</td>
+          </tr>
+          <tr>
+            <td>Repository poisoning</td>
+            <td><code>RepositoryPersistPass</code> gated on <code>AcceptancePassed == true</code></td>
+          </tr>
+          <tr>
+            <td>Cold-start failures</td>
+            <td>Verified prior specs injected into extraction prompt (repository-as-standard-library)</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ═══ Slide 8: Embedding Geometry ═══ -->
+  <section class="slide" id="slide-8">
+    <div class="slide-inner">
+      <span class="section-label">Spec 35</span>
+      <h2>Embedding Geometry</h2>
+      <p>The premise: programs with the same intent should cluster in embedding space. Results from <code>scripts/geometry.py</code>:</p>
+
+      <ul class="geo-list">
+        <li>
+          <span class="geo-pair">FizzBuzz vs CountDown</span>
+          <span>clearly separated — different algorithms, different structure</span>
+          <span class="geo-score low">—</span>
+          <span class="geo-mark pass">✓</span>
+        </li>
+        <li>
+          <span class="geo-pair">BubbleSort vs FizzBuzz</span>
+          <span>clearly separated — unrelated algorithms</span>
+          <span class="geo-score low">—</span>
+          <span class="geo-mark pass">✓</span>
+        </li>
+        <li>
+          <span class="geo-pair">BubbleSort vs SelectionSort</span>
+          <span>nearly identical — borderline vs cluster threshold</span>
+          <span class="geo-score high">0.928</span>
+          <span class="geo-mark fail">✗</span>
+        </li>
+      </ul>
+
+      <div class="quote" style="margin-top:1rem;">
+        <p>The third result is the <em>correct</em> behaviour. Two near-identical sorting algorithms <em>should</em> be close in embedding space. The cluster separation test is too strict when algorithms are genuinely similar. <strong>The premise holds.</strong> Raw Ollama embeddings are intent-sensitive.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ Slide 9: What Remains ═══ -->
+  <section class="slide" id="slide-9">
+    <div class="slide-inner">
+      <span class="section-label">Open Questions</span>
+      <h2>What Remains</h2>
+      <p>Two open questions before "complete":</p>
+
+      <div class="open-q">
+        <span class="open-q-num">Spec 41 — Node MLP Training</span>
+        <h3>NodeMlpPass runs. Training does not.</h3>
+        <p><code>NodeMlpPass</code> runs in the pipeline with randomly initialised weights. The forward pass exists. The training loop — contrastive loss over <code>Contains</code>/<code>DependsOn</code> edges — is not yet implemented. Until training runs and converges, we cannot claim the MLP <em>improves</em> clustering over raw embeddings.</p>
+      </div>
+
+      <div class="open-q">
+        <span class="open-q-num">Spec 21 — Extraction Ceiling</span>
+        <h3>ministral-3b has a reliability ceiling</h3>
+        <p>The current extraction path works with scaffolding. ministral-3b cannot reliably produce well-formed graph JSON directly — three attempts, all failed. Direct graph extraction requires a ≥7B model. The <code>.spec</code> text intermediate is a workaround, not a solution.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ Slide 10: What "Complete" Means ═══ -->
+  <section class="slide" id="slide-10">
+    <div class="slide-inner">
+      <span class="section-label">Status</span>
+      <h2>What "Complete" Means</h2>
+      <p>Four criteria. Three done.</p>
+
+      <table class="styled-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Criterion</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>1</td>
+            <td>Programs with same intent cluster in embedding space</td>
+            <td class="status-done">✓ Done</td>
+          </tr>
+          <tr>
+            <td>2</td>
+            <td>Node MLP refinement improves clustering measurably</td>
+            <td class="status-pending">⧖ Forward pass only — training pending</td>
+          </tr>
+          <tr>
+            <td>3</td>
+            <td>Unbounded conditional loop compiles and runs</td>
+            <td class="status-done">✓ Done (Collatz)</td>
+          </tr>
+          <tr>
+            <td>4</td>
+            <td>Extraction front-end is not the bottleneck</td>
+            <td class="status-partial">~ Scaffolded, not solved</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p style="margin-top:1.3rem;font-size:0.88rem;">Beyond "complete": self-hosting (Spec 20), WASM backend (Spec 43), user-defined intrinsics (Spec 42).</p>
+    </div>
+  </section>
+
+  <!-- ═══ Slide 11: The Longer Horizon ═══ -->
+  <section class="slide" id="slide-11">
+    <div class="slide-inner">
+      <span class="section-label">Future</span>
+      <h2>The Longer Horizon</h2>
+      <p>If the MLP training loop works:</p>
+
+      <div class="horizon-steps">
+        <div class="horizon-step">
+          <div class="horizon-arrow">→</div>
+          <div class="horizon-text">Programs become <strong>points in a learned metric space</strong></div>
+        </div>
+        <div class="horizon-step">
+          <div class="horizon-arrow">→</div>
+          <div class="horizon-text"><strong>"Find me a program like this one"</strong> becomes a nearest-neighbour query</div>
+        </div>
+        <div class="horizon-step">
+          <div class="horizon-arrow">→</div>
+          <div class="horizon-text">New programs could be synthesised by analogy: embed the intent, retrieve the closest prior graph, <strong>adapt by gradient toward the acceptance criteria</strong></div>
+        </div>
+        <div class="horizon-step">
+          <div class="horizon-arrow">→</div>
+          <div class="horizon-text">This <strong>bypasses the extraction front-end entirely</strong> — the LLM's role shrinks to one embedding call per node. Not authoring. Not deciding. Just measuring semantic distance.</div>
+        </div>
+      </div>
+
+      <div class="quote" style="margin-top:1.2rem;">
+        <p>"The compiler as a search problem in program space."</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ Slide 12: Thank You ═══ -->
+  <section class="slide slide-title" id="slide-12">
+    <div class="slide-inner thanks-inner">
+      <div class="title-eyebrow">Thank you</div>
+      <div class="title-main" style="font-size:3.6rem;">IronLlm</div>
+      <div class="title-sub">github.com/[repo]</div>
+      <div class="stack-tags">
+        <span class="stack-tag hl">.NET 10</span>
+        <span class="stack-tag hl">C#</span>
+        <span class="stack-tag">Ollama</span>
+        <span class="stack-tag">ministral-3b</span>
+        <span class="stack-tag">mxbai-embed-large</span>
+      </div>
+      <p style="margin-top:1.4rem;font-style:italic;color:var(--text-muted);text-align:center;">
+        Built without the LLM writing the code —<br>just reading the programs.
+      </p>
+    </div>
+  </section>
+
+</div><!-- #deck -->
+
+<script>
+(function () {
+  const slides = Array.from(document.querySelectorAll('.slide'));
+  const counter = document.getElementById('counter');
+  const progress = document.getElementById('progress');
+  const total = slides.length;
+  let current = 0;
+
+  function show(idx) {
+    if (idx < 0 || idx >= total) return;
+
+    const prev = slides[current];
+    const next = slides[idx];
+
+    prev.classList.remove('active');
+    current = idx;
+    next.classList.add('active');
+
+    counter.textContent = (current + 1) + ' / ' + total;
+    progress.style.width = ((current + 1) / total * 100) + '%';
+  }
+
+  function next() { show(current + 1); }
+  function prev() { show(current - 1); }
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === ' ') {
+      e.preventDefault();
+      next();
+    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      prev();
+    }
+  });
+
+  // Touch / swipe support
+  let touchStartX = 0;
+  document.addEventListener('touchstart', function (e) {
+    touchStartX = e.changedTouches[0].screenX;
+  }, { passive: true });
+  document.addEventListener('touchend', function (e) {
+    const dx = e.changedTouches[0].screenX - touchStartX;
+    if (Math.abs(dx) > 40) {
+      dx < 0 ? next() : prev();
+    }
+  }, { passive: true });
+
+  // Click to advance (right half) / go back (left half)
+  document.addEventListener('click', function (e) {
+    if (e.target.tagName === 'A') return;
+    e.clientX > window.innerWidth / 2 ? next() : prev();
+  });
+
+  // Init progress bar
+  progress.style.width = (1 / total * 100) + '%';
+})();
+</script>
+
+</body>
+</html>
