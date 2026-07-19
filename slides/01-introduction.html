@@ -570,7 +570,7 @@
 <body>
 
 <div id="progress"></div>
-<div id="counter">1 / 12</div>
+<div id="counter">1 / 13</div>
 <div id="nav-hint">← → space</div>
 
 <div id="deck">
@@ -639,7 +639,7 @@
         <div class="pass-item">
           <span class="pass-num">00</span>
           <span class="pass-name">MarkdownSpecPass</span>
-          <span class="pass-desc">— LLM extracts .spec from prose</span>
+          <span class="pass-desc">— LLM extracts .spec + acceptance rules from prose</span>
         </div>
         <div class="pass-item">
           <span class="pass-num">05</span>
@@ -678,8 +678,8 @@
         </div>
         <div class="pass-item">
           <span class="pass-num">03b</span>
-          <span class="pass-name">SemanticNormalizationPass</span>
-          <span class="pass-desc">— cosine similarity reclassification</span>
+          <span class="pass-name">RepositoryRetrievalPass</span>
+          <span class="pass-desc">— prior compilations as context</span>
         </div>
         <div class="pass-item">
           <span class="pass-num">09</span>
@@ -688,8 +688,8 @@
         </div>
         <div class="pass-item">
           <span class="pass-num">03c</span>
-          <span class="pass-name">RepositoryRetrievalPass</span>
-          <span class="pass-desc">— prior compilations as context</span>
+          <span class="pass-name">SemanticNormalizationPass</span>
+          <span class="pass-desc">— cosine similarity reclassification</span>
         </div>
         <div class="pass-item">
           <span class="pass-num">03a</span>
@@ -702,6 +702,88 @@
           <span class="pass-desc">— deterministic structural lowering</span>
         </div>
         <div class="pass-note">Incremental by artifact: if a pass's output file already exists, the pass is skipped. Deleting an artifact forces that pass and all downstream passes to re-run.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ Slide 5: GuessingGame Example ═══ -->
+  <section class="slide" id="slide-5-guessing">
+    <div class="slide-inner">
+      <span class="section-label">Example</span>
+      <h2>From Markdown to CFG</h2>
+      <div class="two-col" style="align-items:start;gap:2rem;">
+        <div>
+          <h3 style="font-family:var(--mono);font-size:0.8rem;color:var(--accent);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.6rem;">Input — GuessingGame.md</h3>
+          <pre style="background:var(--bg-card);border:1px solid var(--border);border-radius:6px;padding:0.9em 1em;font-family:var(--mono);font-size:0.72rem;color:var(--text-muted);line-height:1.55;overflow:hidden;"><span style="color:var(--accent);"># GuessingGame</span>
+
+Write a program named GuessingGame.
+
+Pick a random number.
+
+Continue running these steps until
+the user guesses the correct number:
+1. Ask the user to guess.
+2. If correct, tell them and exit.
+3. If too low, tell them.
+4. If too high, tell them.</pre>
+          <div style="text-align:center;font-size:1.4rem;color:var(--accent);margin:0.7rem 0;">↓ <span style="font-size:0.75rem;font-family:var(--mono);vertical-align:middle;">MarkdownSpecPass + 14 deterministic passes</span></div>
+        </div>
+        <div>
+          <h3 style="font-family:var(--mono);font-size:0.8rem;color:var(--accent);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.6rem;">Output — CFG</h3>
+          <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:6px;padding:0.6em;display:flex;align-items:center;justify-content:center;">
+            <svg xmlns="http://www.w3.org/2000/svg" width="330" height="355" viewBox="0 0 660 710">
+              <defs>
+                <marker id="arr"  markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#4ec9b0"/></marker>
+                <marker id="arrG" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#4ec9b0"/></marker>
+                <marker id="arrA" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#8b949e"/></marker>
+              </defs>
+              <path d="M 305,110 L 305,160" style="stroke:#4ec9b0;fill:none;stroke-width:1.5;marker-end:url(#arrG)"/>
+              <path d="M 305,212 L 305,262" style="stroke:#4ec9b0;fill:none;stroke-width:1.5;marker-end:url(#arrG)"/>
+              <path d="M 305,314 L 160,364" style="stroke:#4ec9b0;fill:none;stroke-width:1.5;marker-end:url(#arrG)"/>
+              <text x="238" y="335" font-size="10" fill="#4ec9b0" font-family="monospace">yes</text>
+              <path d="M 305,314 L 450,364" style="stroke:#8b949e;fill:none;stroke-width:1.5;marker-end:url(#arrA)"/>
+              <text x="384" y="335" font-size="10" fill="#8b949e" font-family="monospace">no</text>
+              <path d="M 450,416 C 10,436 10,140 305,160" style="stroke:#4ec9b0;fill:none;stroke-width:1.5;stroke-dasharray:5;marker-end:url(#arrG)"/>
+              <path d="M 160,416 L 160,466" style="stroke:#4ec9b0;fill:none;stroke-width:1.5;marker-end:url(#arrG)"/>
+              <text x="166" y="437" font-size="10" fill="#4ec9b0" font-family="monospace">yes</text>
+              <path d="M 160,416 L 450,466" style="stroke:#8b949e;fill:none;stroke-width:1.5;marker-end:url(#arrA)"/>
+              <text x="311" y="437" font-size="10" fill="#8b949e" font-family="monospace">no</text>
+              <path d="M 450,518 C 10,538 10,140 305,160" style="stroke:#4ec9b0;fill:none;stroke-width:1.5;stroke-dasharray:5;marker-end:url(#arrG)"/>
+              <path d="M 160,518 L 160,568" style="stroke:#4ec9b0;fill:none;stroke-width:1.5;marker-end:url(#arrG)"/>
+              <text x="166" y="539" font-size="10" fill="#4ec9b0" font-family="monospace">yes</text>
+              <path d="M 160,518 L 450,568" style="stroke:#8b949e;fill:none;stroke-width:1.5;marker-end:url(#arrA)"/>
+              <text x="311" y="539" font-size="10" fill="#8b949e" font-family="monospace">no</text>
+              <path d="M 160,620 L 450,568" style="stroke:#4ec9b0;fill:none;stroke-width:1.5;marker-end:url(#arrG)"/>
+              <rect x="185" y="40" width="240" height="70" rx="5" style="fill:#1a3a5c;stroke:#4ec9b0;stroke-width:1.2"/>
+              <text x="305" y="62" text-anchor="middle" font-size="12" font-weight="bold" font-family="monospace" fill="#4ec9b0">entry</text>
+              <text x="193" y="80" font-size="10" font-family="monospace" fill="#8b949e">rand_int target 1 100</text>
+              <text x="193" y="98" font-size="10" font-family="monospace" fill="#8b949e">print "Guess…"</text>
+              <rect x="185" y="160" width="240" height="52" rx="5" style="fill:#1e2a1e;stroke:#4ec9b0;stroke-width:1.2"/>
+              <text x="305" y="182" text-anchor="middle" font-size="12" font-weight="bold" font-family="monospace" fill="#e6edf3">read_step</text>
+              <text x="193" y="200" font-size="10" font-family="monospace" fill="#8b949e">read_int guess</text>
+              <rect x="185" y="262" width="240" height="52" rx="5" style="fill:#3a2e0a;stroke:#e8b84b;stroke-width:1.2"/>
+              <text x="305" y="284" text-anchor="middle" font-size="12" font-weight="bold" font-family="monospace" fill="#e8b84b">check_too_low</text>
+              <text x="193" y="302" font-size="10" font-family="monospace" fill="#8b949e">if guess lt {target}</text>
+              <rect x="330" y="364" width="240" height="52" rx="5" style="fill:#1e2a1e;stroke:#4ec9b0;stroke-width:1.2"/>
+              <text x="450" y="386" text-anchor="middle" font-size="12" font-weight="bold" font-family="monospace" fill="#e6edf3">print_too_low</text>
+              <text x="338" y="404" font-size="10" font-family="monospace" fill="#8b949e">print "Too low!"</text>
+              <rect x="40" y="364" width="240" height="52" rx="5" style="fill:#3a2e0a;stroke:#e8b84b;stroke-width:1.2"/>
+              <text x="160" y="386" text-anchor="middle" font-size="12" font-weight="bold" font-family="monospace" fill="#e8b84b">check_too_high</text>
+              <text x="48" y="404" font-size="10" font-family="monospace" fill="#8b949e">if guess gt {target}</text>
+              <rect x="330" y="466" width="240" height="52" rx="5" style="fill:#1e2a1e;stroke:#4ec9b0;stroke-width:1.2"/>
+              <text x="450" y="488" text-anchor="middle" font-size="12" font-weight="bold" font-family="monospace" fill="#e6edf3">print_too_high</text>
+              <text x="338" y="506" font-size="10" font-family="monospace" fill="#8b949e">print "Too high!"</text>
+              <rect x="40" y="466" width="240" height="52" rx="5" style="fill:#3a2e0a;stroke:#e8b84b;stroke-width:1.2"/>
+              <text x="160" y="488" text-anchor="middle" font-size="12" font-weight="bold" font-family="monospace" fill="#e8b84b">check_correct</text>
+              <text x="48" y="506" font-size="10" font-family="monospace" fill="#8b949e">if guess eq {target}</text>
+              <rect x="40" y="568" width="240" height="52" rx="5" style="fill:#1e2a1e;stroke:#4ec9b0;stroke-width:1.2"/>
+              <text x="160" y="590" text-anchor="middle" font-size="12" font-weight="bold" font-family="monospace" fill="#e6edf3">print_correct</text>
+              <text x="48" y="608" font-size="10" font-family="monospace" fill="#8b949e">print "Correct!"</text>
+              <rect x="330" y="568" width="240" height="34" rx="5" style="fill:#1a3a5c;stroke:#4ec9b0;stroke-width:1.2"/>
+              <text x="450" y="590" text-anchor="middle" font-size="12" font-weight="bold" font-family="monospace" fill="#4ec9b0">exit</text>
+            </svg>
+          </div>
+        </div>
       </div>
     </div>
   </section>
@@ -927,7 +1009,7 @@
     <div class="slide-inner thanks-inner">
       <div class="title-eyebrow">Thank you</div>
       <div class="title-main" style="font-size:3.6rem;">Specc</div>
-      <div class="title-sub">github.com/[repo]</div>
+      <div class="title-sub">github.com/treytomes/specc</div>
       <div class="stack-tags">
         <span class="stack-tag hl">.NET 10</span>
         <span class="stack-tag hl">C#</span>
