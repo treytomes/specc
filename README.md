@@ -10,7 +10,7 @@ The deeper experiment: if programs are graphs with semantic embeddings, they bec
 
 ## Pipeline
 
-Fourteen passes, each writing a named artifact to an output directory. The pipeline is **incremental**: if an artifact already exists, the pass is skipped and context is loaded from disk.
+Sixteen passes, each writing a named artifact to an output directory. The pipeline is **incremental**: if an artifact already exists, the pass is skipped and context is loaded from disk.
 
 ```
 FizzBuzz.md
@@ -22,22 +22,25 @@ FizzBuzz.md
     ▼ GraphVisualizationPass ─────── 02b-semantic-graph.mmd    Mermaid flowchart
     │                        └────── 02c-semantic-graph.svg    layered SVG (browser-ready)
     ▼ AcceptanceCriteriaPass ─────── 00-acceptance.json        expected output, derived from graph
-    ▼ EmbeddingPass ─────────────── 03-embeddings.json         per-node vectors (LLM)
+    ▼ EmbeddingPass ─────────────── 03-embeddings.json         per-node vectors (mxbai-embed-large)
     ▼ RepositoryRetrievalPass ────── (no artifact)             retrieve similar prior compilations
     ▼ SemanticNormalizationPass ──── 03b-normalized-graph.json label normalization via cosine similarity
+    ▼ NodeMlpPass ───────────────── 03a-refined-embeddings.json per-kind MLP refinement
     ▼ CfgPass ───────────────────── 04-cfg.json                control-flow graph
+    ▼ CfgVisualizationPass ─────────04b-cfg-flowchart.mmd      CFG Mermaid flowchart
+    │                        └────── 04c-cfg-flowchart.svg     CFG layered SVG
     ▼ StackIrPass ───────────────── 05-stackir.json            stack machine IR
-    ▼ MsilGenerationPass ────────── 06-program.il              IL assembly text
     ▼ SemanticValidationPass ──────── (no artifact)            graph invariant checks
+    ▼ MsilGenerationPass ────────── 06-program.il              IL assembly text
     ▼ AssemblyEmitPass ──────────── 07-program.dll             managed PE
     │                  └─────────── FizzBuzz                   native launcher
-    ▼ AcceptanceVerificationPass                               launch binary, diff against criteria
+    ▼ AcceptanceVerificationPass    (no artifact)              launch binary, diff against criteria
     ▼ RepositoryPersistPass ──────── (no artifact)             persist compilation to graph repository
 ```
 
-The LLM is used in two places: extracting a `.spec` from a Markdown description (ministral-3b), and embedding each graph node as a semantic vector (mxbai-embed-large). Everything else is deterministic.
+Two models participate in the pipeline. `MarkdownSpecPass` uses a small language model (ministral-3b) to extract a structured spec from prose. `EmbeddingPass` uses an embedding model (mxbai-embed-large) to attach a semantic vector to each graph node. Everything else is deterministic.
 
-`AcceptanceVerificationPass` prefers acceptance rules extracted from the Markdown prose over rules derived from the graph. Graph-derived rules verify internal consistency; prose-derived rules verify authorial intent — they can catch bugs introduced by the extraction passes themselves. For `.md` files with an `## Expected Output` block, the expected lines are parsed directly without an LLM call.
+`AcceptanceVerificationPass` prefers acceptance rules extracted from the Markdown prose over rules derived from the graph. Graph-derived rules verify that the binary matches the graph — but if the extraction passes misinterpret the prose, both the graph and the criteria will be wrong and the check passes silently. Extracting criteria from the prose independently breaks this circular dependency. For `.md` files with an `## Expected Output` block, the expected lines are parsed directly without an LLM call.
 
 ## Quickstart
 
@@ -67,7 +70,7 @@ Force a pass to re-run by deleting its artifact or using `--force`:
 
 ## The spec format
 
-Programs are described in a simple key-value DSL, or in plain Markdown (preferred):
+Programs are described in a simple key-value DSL, or in plain Markdown (preferred). The Markdown path is more reliable — Specc injects verified prior compilations into the extraction prompt as structural templates, so the model pattern-matches against working examples rather than synthesizing from rules alone.
 
 ```
 program: FizzBuzz
@@ -102,7 +105,7 @@ variable:
 
 Branches are evaluated in declaration order. The `default` branch has no `divisor`.
 
-For programs that compute values (rather than just label iterations), use `assign:` blocks and `initial_value:`:
+For programs that compute values, use `assign:` blocks and `initial_value:`:
 
 ```
 program: Fibonacci
@@ -146,17 +149,26 @@ branch:
   true_output: {a}
 ```
 
-Valid ops: `mul`, `add`, `sub`, `copy`. When `assign:` blocks are present, any `branch:`/`divisor:` entries in the same spec are treated as LLM noise and dropped. The loop counter is incremented automatically — do not add an `assign:` block for it.
+Valid ops: `mul`, `add`, `sub`, `div`, `copy`. When `assign:` blocks are present, any `branch:`/`divisor:` entries in the same spec are treated as noise and dropped. For interactive programs, use `source: stdin` on a variable and a `while:` block for the loop condition.
 
 ## Working examples
 
 | Example | Description | Result |
 |---------|-------------|--------|
 | FizzBuzz | 1–100 divisibility labels | 100/100 |
+| Fizz | Single-branch variant (÷3 → "Fizz") | Pass |
+| FizzBuzzHundred | Two-branch variant (÷7 "Fizz", ÷11 "Buzz") | Pass |
+| CountDown | Print 1–10, no branches | Pass |
 | BubbleSort | 10-element in-place sort | 10/10 |
 | SelectionSort | 8-element selection sort | 8/8 |
 | Multiples | Print first 12 multiples of 7 | 12/12 |
 | Fibonacci | Print first 10 Fibonacci numbers | 10/10 |
+| Guesser | Read int from stdin, compare to 42, print hint | Pass (3/3) |
+| Calculator | Read two ints from stdin, print their sum | Pass (3/3) |
+| Collatz | Read int from stdin, run Collatz sequence | Pass (3/3) |
+| GuessingGame | Random target 1–100, stdin guesses, var-vs-var while loop | Pass |
+| DiceRoll | Roll a d6 and print the result | Pass |
+| SimpleGuess | Interactive while loop with hardcoded target | Pass |
 
 Run any example:
 
@@ -169,17 +181,16 @@ Run any example:
 ```
 Specc/
   Graph/          Node.cs, Edge.cs, CfgBlock.cs, StackInstruction.cs
+  Learning/       NodeMlp.cs, NodeMlpRegistry.cs
   Passes/         One file per pass + CompilationContext + ArtifactWriter
+  Passes/Repository/  CompiledUnit.cs, GraphRepository.cs
   Program.cs      CLI entry point (System.CommandLine + DI + Serilog)
 Specc.Tests/
   Passes/         Per-pass unit tests
   Fixtures/       PipelineFixtures, FakeLogger
 examples/
   FizzBuzz/       FizzBuzz.md + artifacts/ (generated)
-  BubbleSort/     BubbleSort.md + artifacts/
-  SelectionSort/  SelectionSort.md + artifacts/
-  Multiples/      Multiples.md + artifacts/
-  Fibonacci/      Fibonacci.md + artifacts/
+  ...             one directory per working example
 scripts/
   install.sh      Dependency setup
   build.sh        dotnet build
@@ -212,7 +223,7 @@ Each `ICompilerPass` declares an `ArtifactFile`. Before executing a pass, the ru
 
 ## Architecture notes
 
-**Why a deterministic CFG?** An earlier design called an LLM to generate the control-flow graph from the semantic graph. The problem: constructing correct CFG from a typed graph is a mechanical transformation, not a task that requires semantic understanding. Rewriting `CfgPass` as deterministic code eliminated an entire class of errors and made the pipeline testable without an Ollama instance.
+**Why a deterministic CFG?** An earlier design called an LLM to generate the control-flow graph from the semantic graph. The problem: constructing a correct CFG from a typed graph is a mechanical transformation, not a task that requires semantic understanding. Rewriting `CfgPass` as deterministic code eliminated an entire class of errors and made the pipeline testable without an Ollama instance.
 
 **Why authorial intent for verification?** Acceptance criteria derived from the graph verify that the binary matches the graph — but if `MarkdownSpecPass` or `SemanticGraphPass` misinterprets the prose, the graph and the criteria will both be wrong and the check will pass silently. Extracting criteria from the prose independently breaks this circular dependency.
 
@@ -220,13 +231,15 @@ Each `ICompilerPass` declares an `ArtifactFile`. Before executing a pass, the ru
 
 **Why a semantic graph at all?** It is the persistence layer for program intent. Once a program has been compiled and its graph and embeddings are saved, future compilations of similar programs can retrieve and reuse prior structural patterns (Spec 03). The embeddings open the door to gradient-based refinement of the graph structure itself (Spec 04) — the experiment the whole project is pointing toward.
 
-**Why `op: copy` instead of `add {x} 0`?** Small models (ministral-3b) conflate the copy step with the addition step when the spec format only offers arithmetic ops. Adding `copy` as a first-class op gives the model a natural vocabulary and eliminates a systematic extraction failure for Fibonacci-style programs.
+**Why does the repository act as a standard library?** The graph repository stores the raw spec text for each verified compilation. `MarkdownSpecPass` retrieves prior compilations that used similar constructs and injects their specs into the extraction prompt. The LLM pattern-matches against verified examples instead of synthesizing from rules alone — this turned out to be the difference between reliable extraction and garbage output on novel construct combinations.
 
 ## Roadmap
 
 | Spec | Title | Status |
 |------|-------|--------|
-| 04 | Differentiable node MLPs | Research |
-| 20 | Roadmap to self-hosting | Exploration |
-| 21 | Direct graph extraction | Design |
-| 29 | Greetings example (string I/O) | Design |
+| 41 | Node MLP training loop | Phase 2 gate — contrastive + type-classification loss |
+| 44 | Repository health | Retroactive eviction + assertion-weighted retrieval |
+| 42 | User-defined intrinsics | `intrinsics.json` + `call:` spec construct; unblocks OpenTK, Terminal.Gui |
+| 43 | WASM backend | `--target wasm` → WAT generation + optional WASM assembly |
+| 20 | Roadmap to self-hosting | Long-horizon exploration |
+| 21 | Direct graph extraction | Skip MarkdownSpecPass for well-formed inputs |

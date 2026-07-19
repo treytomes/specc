@@ -1,4 +1,4 @@
 <Solution>
-  <Project Path="IronLlm/IronLlm.csproj" />
-  <Project Path="IronLlm.Tests/IronLlm.Tests.csproj" />
+  <Project Path="Specc/Specc.csproj" />
+  <Project Path="Specc.Tests/Specc.Tests.csproj" />
 </Solution>
