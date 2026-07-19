@@ -174,16 +174,24 @@ The compiled executable is written to `<artifacts-dir>/<ProgramName>` and is dir
 | DiceRoll | random: in isolation — roll a d6 and print the result | Pass |
 | SimpleGuess | Interactive while + compare_with: branches, hardcoded target | Pass |
 
+## Phase status
+
+**Phase 1 (stress-test the pipeline) — complete.** Collatz compiled and passed 9/9 assertions (2026-07-18), confirming unbounded conditional iteration over bounded data. The extraction cliff was real but bridgeable: scaffolding (construct library examples, repository priors, ConsistencyMissing retry, SemanticGraphPass print-before-while relocation) is now permanent pipeline infrastructure.
+
+**Phase 2 (differentiable semantic graph) — in progress.** Spec 35 done: raw embeddings are intent-sensitive, 2/3 cluster checks pass. `NodeMlpPass` (Spec 04a) runs in the pipeline but uses randomly-initialised weights. Spec 41 (training loop) is the remaining gate for criterion 2.
+
+**Phase 3 (Turing-completeness) — done** in the sense the roadmap intended: unbounded iteration over bounded data (scalar integers + fixed-size arrays). Formally Turing complete it is not — no heap, no unbounded memory.
+
 ## Upcoming work
 
 See `specs/incomplete/` for detailed design docs:
 
 | Spec | Title | Notes |
 |------|-------|-------|
-| 41 | Node MLP training loop | Offline contrastive + type-classification loss over `Contains`/`DependsOn` edges only; CFG back-edges excluded to avoid recurrent gradient paths |
+| 41 | Node MLP training loop | **Phase 2 gate** — offline contrastive + type-classification loss; without this, the MLP forward pass runs but doesn't improve clustering |
+| 44 | Repository health | Level 2: retroactive eviction when a recompilation fails acceptance; Level 3: assertion-count-weighted retrieval ranking |
 | 42 | User-defined intrinsics | `intrinsics.json` alongside `.md` loads third-party .NET assemblies; `call:` spec construct emits named intrinsics directly; unblocks OpenTK, Terminal.Gui etc. |
 | 43 | WASM backend | `--target wasm` replaces passes 06–07 with `WatGenerationPass` (stack IR → `.wat`) + optional `WasmAssemblyPass`; passes 00–05 unchanged |
-| 44 | Repository health | Level 2: retroactive eviction when a recompilation fails acceptance; Level 3: assertion-count-weighted retrieval ranking |
 | 20 | Roadmap to self-hosting | Long-horizon exploration |
 | 21 | Direct graph extraction | Skip MarkdownSpecPass for well-formed inputs — deferred, needs ≥7B model |
 | 29 | Greetings example | `InputNode`, string variables, linear CFG, stdin acceptance testing |
