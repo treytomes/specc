@@ -211,7 +211,7 @@ specs/
 | mxbai-embed-large | latest | Embedding pass |
 | ministral-3:3b | latest | Markdown spec ingestion |
 
-`scripts/install.sh` handles all of these. Override endpoints and model names via `.env` or environment variables (`IRONLLM_OLLAMA_BASE`, `IRONLLM_EMBED_MODEL`, `IRONLLM_CHAT_MODEL`).
+`scripts/install.sh` handles all of these. Override endpoints and model names via `.env` or environment variables (`SPECC_OLLAMA_BASE`, `SPECC_EMBED_MODEL`, `SPECC_CHAT_MODEL`).
 
 ## How the incremental pipeline works
 
@@ -241,5 +241,6 @@ Each `ICompilerPass` declares an `ArtifactFile`. Before executing a pass, the ru
 | 44 | Repository health | Retroactive eviction + assertion-weighted retrieval |
 | 42 | User-defined intrinsics | `intrinsics.json` + `call:` spec construct; unblocks OpenTK, Terminal.Gui |
 | 43 | WASM backend | `--target wasm` → WAT generation + optional WASM assembly |
+| 45 | Graph memory | Episodic → semantic repository: pattern nodes, cross-compilation edges, failure memory, abstract pattern injection |
 | 20 | Roadmap to self-hosting | Long-horizon exploration |
 | 21 | Direct graph extraction | Skip MarkdownSpecPass for well-formed inputs |

@@ -143,7 +143,7 @@ The compiled executable is written to `<artifacts-dir>/<ProgramName>` and is dir
 - Models: `mxbai-embed-large:latest` (embeddings), `ministral-3:3b` (Markdown spec ingestion)
 - python3 (used by `test.sh` for JSON artifact inspection only)
 
-`scripts/install.sh` checks all of these and pulls missing Ollama models automatically. Override endpoints and model names via `.env` or environment variables (`IRONLLM_OLLAMA_BASE`, `IRONLLM_EMBED_MODEL`, `IRONLLM_CHAT_MODEL`).
+`scripts/install.sh` checks all of these and pulls missing Ollama models automatically. Override endpoints and model names via `.env` or environment variables (`SPECC_OLLAMA_BASE`, `SPECC_EMBED_MODEL`, `SPECC_CHAT_MODEL`).
 
 ## Key design decisions
 
@@ -190,6 +190,7 @@ See `specs/incomplete/` for detailed design docs:
 |------|-------|-------|
 | 41 | Node MLP training loop | **Phase 2 gate** — offline contrastive + type-classification loss; without this, the MLP forward pass runs but doesn't improve clustering |
 | 44 | Repository health | Level 2: retroactive eviction when a recompilation fails acceptance; Level 3: assertion-count-weighted retrieval ranking |
+| 45 | Graph memory | Episodic → semantic repository: pattern nodes, cross-compilation edges, failure memory, abstract pattern injection |
 | 42 | User-defined intrinsics | `intrinsics.json` alongside `.md` loads third-party .NET assemblies; `call:` spec construct emits named intrinsics directly; unblocks OpenTK, Terminal.Gui etc. |
 | 43 | WASM backend | `--target wasm` replaces passes 06–07 with `WatGenerationPass` (stack IR → `.wat`) + optional `WasmAssemblyPass`; passes 00–05 unchanged |
 | 20 | Roadmap to self-hosting | Long-horizon exploration |
