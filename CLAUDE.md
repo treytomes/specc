@@ -183,6 +183,7 @@ See `specs/incomplete/` for detailed design docs:
 | 41 | Node MLP training loop | Offline contrastive + type-classification loss over `Contains`/`DependsOn` edges only; CFG back-edges excluded to avoid recurrent gradient paths |
 | 42 | User-defined intrinsics | `intrinsics.json` alongside `.md` loads third-party .NET assemblies; `call:` spec construct emits named intrinsics directly; unblocks OpenTK, Terminal.Gui etc. |
 | 43 | WASM backend | `--target wasm` replaces passes 06–07 with `WatGenerationPass` (stack IR → `.wat`) + optional `WasmAssemblyPass`; passes 00–05 unchanged |
+| 44 | Repository health | Level 2: retroactive eviction when a recompilation fails acceptance; Level 3: assertion-count-weighted retrieval ranking |
 | 20 | Roadmap to self-hosting | Long-horizon exploration |
 | 21 | Direct graph extraction | Skip MarkdownSpecPass for well-formed inputs — deferred, needs ≥7B model |
 | 29 | Greetings example | `InputNode`, string variables, linear CFG, stdin acceptance testing |
