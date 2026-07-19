@@ -6,6 +6,7 @@ namespace Specc.Learning;
 
 // Owns one NodeMlp per node kind. Loads from / saves to repository/node-mlp-weights.json.
 // On first run (no weights file), initialises all MLPs with Xavier uniform random weights.
+/// <summary>Manages one <see cref="NodeMlp"/> per node kind; persists weights to the repository directory.</summary>
 public class NodeMlpRegistry
 {
     private static readonly string[] KnownKinds =
@@ -19,6 +20,7 @@ public class NodeMlpRegistry
 
     private NodeMlpRegistry(Dictionary<string, NodeMlp> mlps) => _mlps = mlps;
 
+    /// <summary>Loads weights from <c>node-mlp-weights.json</c> in the repository directory, or creates random weights on first run.</summary>
     public static NodeMlpRegistry LoadOrCreate(string repositoryPath)
     {
         var weightsPath = WeightsPath(repositoryPath);
@@ -36,6 +38,7 @@ public class NodeMlpRegistry
         return CreateRandom();
     }
 
+    /// <summary>Persists the current weights to <c>node-mlp-weights.json</c> in the repository directory.</summary>
     public void Save(string repositoryPath)
     {
         Directory.CreateDirectory(repositoryPath);
@@ -48,7 +51,7 @@ public class NodeMlpRegistry
         File.WriteAllText(WeightsPath(repositoryPath), JsonSerializer.Serialize(dto, JsonOpts));
     }
 
-    // Applies the MLP for this node's kind. Falls through unchanged when kind is unknown.
+    /// <summary>Applies the MLP for this node's kind and returns the refined embedding; returns the raw embedding unchanged when the kind is unknown.</summary>
     public float[] Refine(Node node, float[] rawEmbedding, float[] neighborMean)
     {
         var kind = KindOf(node);

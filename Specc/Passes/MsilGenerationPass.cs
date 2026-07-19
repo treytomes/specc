@@ -5,23 +5,29 @@ using Microsoft.Extensions.Logging;
 
 namespace Specc.Passes;
 
+/// <summary>Lowers the stack IR to textual MSIL assembly (<c>.il</c> format).</summary>
 public class MsilGenerationPass : ICompilerPass
 {
     private readonly ILogger<MsilGenerationPass> _logger;
 
+    /// <summary>Initialises the pass with a logger.</summary>
     public MsilGenerationPass(ILogger<MsilGenerationPass> logger)
     {
         _logger = logger;
     }
 
+    /// <inheritdoc/>
     public string Name          => "06-MSIL";
+    /// <inheritdoc/>
     public string? ArtifactFile  => "06-program.il";
 
+    /// <inheritdoc/>
     public async Task LoadFromArtifactAsync(string artifactPath, CompilationContext context)
     {
         context.MsilOutput = await File.ReadAllTextAsync(artifactPath);
     }
 
+    /// <inheritdoc/>
     public Task ExecuteAsync(CompilationContext context)
     {
         if (context.StackIr.Count == 0)

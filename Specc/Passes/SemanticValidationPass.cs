@@ -8,11 +8,20 @@ namespace Specc.Passes;
 
 // ── Output types ─────────────────────────────────────────────────────────────
 
+/// <summary>Aggregated result of all semantic, CFG, and stack IR validation checks.</summary>
+/// <param name="Passed">True when every check passed.</param>
+/// <param name="Checks">Individual check results.</param>
 public record ValidationReport(bool Passed, List<ValidationCheck> Checks);
+
+/// <summary>Result of a single named validation check.</summary>
+/// <param name="Name">Short description of the invariant being checked.</param>
+/// <param name="Passed">True when the invariant holds.</param>
+/// <param name="Detail">Optional detail message when the check fails.</param>
 public record ValidationCheck(string Name, bool Passed, string? Detail = null);
 
 // ── Pass ─────────────────────────────────────────────────────────────────────
 
+/// <summary>Runs structural invariant checks on the semantic graph, CFG, and stack IR before assembly emission.</summary>
 public class SemanticValidationPass : ICompilerPass
 {
     private readonly ILogger<SemanticValidationPass> _logger;
@@ -24,16 +33,20 @@ public class SemanticValidationPass : ICompilerPass
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
 
+    /// <summary>Initialises the pass with a logger.</summary>
     public SemanticValidationPass(ILogger<SemanticValidationPass> logger)
     {
         _logger = logger;
     }
 
+    /// <inheritdoc/>
     public string  Name         => "08-Validation";
+    /// <inheritdoc/>
     public string? ArtifactFile => "08-validation.json";
 
     // ── Execute ───────────────────────────────────────────────────────────────
 
+    /// <inheritdoc/>
     public async Task ExecuteAsync(CompilationContext context)
     {
         var sw     = Stopwatch.StartNew();
@@ -69,6 +82,7 @@ public class SemanticValidationPass : ICompilerPass
 
     // ── Load ──────────────────────────────────────────────────────────────────
 
+    /// <inheritdoc/>
     public async Task LoadFromArtifactAsync(string artifactPath, CompilationContext context)
     {
         var json   = await File.ReadAllTextAsync(artifactPath);

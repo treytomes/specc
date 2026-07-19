@@ -12,15 +12,20 @@ namespace Specc.Passes;
 // Neighbourhood aggregation uses only Contains and DependsOn edges pointing *away* from the
 // node (the Contains DAG). CFG successor edges are excluded — they can form cycles and
 // would make gradient computation recurrent during Spec 41 training.
+/// <summary>Refines raw node embeddings in-place using per-kind MLPs from the <see cref="NodeMlpRegistry"/>.</summary>
 public class NodeMlpPass : ICompilerPass
 {
     private readonly ILogger<NodeMlpPass> _logger;
 
+    /// <summary>Initialises the pass with a logger.</summary>
     public NodeMlpPass(ILogger<NodeMlpPass> logger) => _logger = logger;
 
+    /// <inheritdoc/>
     public string  Name         => "03a-NodeMlp";
+    /// <inheritdoc/>
     public string? ArtifactFile => "03a-refined-embeddings.json";
 
+    /// <inheritdoc/>
     public async Task LoadFromArtifactAsync(string artifactPath, CompilationContext context)
     {
         var json  = await File.ReadAllTextAsync(artifactPath);
@@ -31,6 +36,7 @@ public class NodeMlpPass : ICompilerPass
             .ToList();
     }
 
+    /// <inheritdoc/>
     public Task ExecuteAsync(CompilationContext context)
     {
         var graph = context.SemanticGraph

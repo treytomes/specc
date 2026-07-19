@@ -13,6 +13,7 @@ namespace Specc.Passes;
 // have their labels rewritten to the stable "Kind:value" form.
 // Nodes below threshold cause a CompilationException — they represent content
 // the downstream passes cannot safely interpret.
+/// <summary>Validates and re-labels graph nodes by comparing their embeddings against a canonical reference corpus.</summary>
 [ExcludeFromCodeCoverage(Justification = "Requires live Ollama; covered by scripts/test.sh")]
 public class SemanticNormalizationPass : ICompilerPass
 {
@@ -50,6 +51,7 @@ public class SemanticNormalizationPass : ICompilerPass
     private readonly IEmbeddingGenerator<string, Embedding<float>> _embedder;
     private readonly ILogger<SemanticNormalizationPass> _logger;
 
+    /// <summary>Initialises the pass with an embedding generator and a logger.</summary>
     public SemanticNormalizationPass(
         IEmbeddingGenerator<string, Embedding<float>> embedder,
         ILogger<SemanticNormalizationPass> logger)
@@ -58,9 +60,12 @@ public class SemanticNormalizationPass : ICompilerPass
         _logger   = logger;
     }
 
+    /// <inheritdoc/>
     public string Name          => "03b-SemanticNormalization";
+    /// <inheritdoc/>
     public string? ArtifactFile  => "03b-normalized-graph.json";
 
+    /// <inheritdoc/>
     public async Task LoadFromArtifactAsync(string artifactPath, CompilationContext context)
     {
         var json    = await File.ReadAllTextAsync(artifactPath);
@@ -80,6 +85,7 @@ public class SemanticNormalizationPass : ICompilerPass
         public List<Edge>? Edges { get; set; }
     }
 
+    /// <inheritdoc/>
     public async Task ExecuteAsync(CompilationContext context)
     {
         var graph = context.SemanticGraph
@@ -150,7 +156,7 @@ public class SemanticNormalizationPass : ICompilerPass
             Name, sw.ElapsedMilliseconds, reclassified, normalised);
     }
 
-    // Computes cosine similarity and returns the closest canonical kind and its score.
+    /// <summary>Returns the canonical kind whose reference vector has the highest cosine similarity to <paramref name="vector"/>.</summary>
     public static (string Kind, float Score) BestMatch(float[] vector, (string Kind, float[] Vector)[] references)
     {
         var best = references[0];
@@ -167,6 +173,7 @@ public class SemanticNormalizationPass : ICompilerPass
         return (best.Kind, bestScore);
     }
 
+    /// <summary>Computes the cosine similarity between two vectors.</summary>
     public static float CosineSimilarity(float[] a, float[] b)
     {
         var dot  = 0f;

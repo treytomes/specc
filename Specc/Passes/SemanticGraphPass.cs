@@ -5,18 +5,23 @@ using Microsoft.Extensions.Logging;
 
 namespace Specc.Passes;
 
+/// <summary>Parses the raw <c>.spec</c> text into a typed semantic graph of nodes and edges.</summary>
 public class SemanticGraphPass : ICompilerPass
 {
     private readonly ILogger<SemanticGraphPass> _logger;
 
+    /// <summary>Initialises the pass with a logger.</summary>
     public SemanticGraphPass(ILogger<SemanticGraphPass> logger)
     {
         _logger = logger;
     }
 
+    /// <inheritdoc/>
     public string Name          => "02-SemanticGraph";
+    /// <inheritdoc/>
     public string? ArtifactFile  => "02-semantic-graph.json";
 
+    /// <inheritdoc/>
     public async Task LoadFromArtifactAsync(string artifactPath, CompilationContext context)
     {
         var json    = await File.ReadAllTextAsync(artifactPath);
@@ -36,6 +41,7 @@ public class SemanticGraphPass : ICompilerPass
         public List<Edge>? Edges { get; set; }
     }
 
+    /// <inheritdoc/>
     public Task ExecuteAsync(CompilationContext context)
     {
         var sw   = Stopwatch.StartNew();

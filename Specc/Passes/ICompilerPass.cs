@@ -1,16 +1,17 @@
 namespace Specc.Passes;
 
+/// <summary>Contract implemented by every stage in the compilation pipeline.</summary>
 public interface ICompilerPass
 {
+    /// <summary>Display name used in pipeline logs.</summary>
     string Name { get; }
 
-    // Artifact filename this pass owns, e.g. "04-cfg.json".
-    // Null means the pass produces no artifact (or always re-runs).
+    /// <summary>Artifact filename this pass owns, e.g. <c>04-cfg.json</c>; null means no artifact.</summary>
     string? ArtifactFile { get; }
 
+    /// <summary>Runs the pass against the given compilation context.</summary>
     Task ExecuteAsync(CompilationContext context);
 
-    // Populate context from a previously-written artifact instead of re-running.
-    // Only called when ArtifactFile exists on disk and is up-to-date.
+    /// <summary>Populates context from a previously-written artifact instead of re-running the pass.</summary>
     Task LoadFromArtifactAsync(string artifactPath, CompilationContext context);
 }

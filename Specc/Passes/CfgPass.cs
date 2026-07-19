@@ -5,16 +5,20 @@ using Microsoft.Extensions.Logging;
 
 namespace Specc.Passes;
 
+/// <summary>Lowers the semantic graph to a control flow graph of basic blocks.</summary>
 public class CfgPass : ICompilerPass
 {
     private readonly ILogger<CfgPass> _logger;
 
+    /// <summary>Initialises the pass with a logger.</summary>
     public CfgPass(ILogger<CfgPass> logger)
     {
         _logger = logger;
     }
 
+    /// <inheritdoc/>
     public string Name          => "04-CFG";
+    /// <inheritdoc/>
     public string? ArtifactFile  => "04-cfg.json";
 
     private static readonly JsonSerializerOptions JsonOpts = new()
@@ -23,6 +27,7 @@ public class CfgPass : ICompilerPass
         PropertyNameCaseInsensitive = true,
     };
 
+    /// <inheritdoc/>
     public Task LoadFromArtifactAsync(string artifactPath, CompilationContext context)
     {
         var json   = File.ReadAllText(artifactPath);
@@ -32,6 +37,7 @@ public class CfgPass : ICompilerPass
         return Task.CompletedTask;
     }
 
+    /// <inheritdoc/>
     public Task ExecuteAsync(CompilationContext context)
     {
         var sw    = Stopwatch.StartNew();

@@ -5,21 +5,27 @@ using Microsoft.Extensions.Logging;
 
 namespace Specc.Passes;
 
+/// <summary>Produces a Mermaid flowchart and SVG diagram of the semantic graph.</summary>
 public class GraphVisualizationPass : ICompilerPass
 {
     private readonly ILogger<GraphVisualizationPass> _logger;
 
+    /// <summary>Initialises the pass with a logger.</summary>
     public GraphVisualizationPass(ILogger<GraphVisualizationPass> logger)
     {
         _logger = logger;
     }
 
+    /// <inheritdoc/>
     public string  Name         => "02b-GraphVisualization";
+    /// <inheritdoc/>
     public string? ArtifactFile => "02b-semantic-graph.mmd";
 
+    /// <inheritdoc/>
     public Task LoadFromArtifactAsync(string artifactPath, CompilationContext context) =>
         Task.CompletedTask;
 
+    /// <inheritdoc/>
     public async Task ExecuteAsync(CompilationContext context)
     {
         var graph = context.SemanticGraph
@@ -45,6 +51,7 @@ public class GraphVisualizationPass : ICompilerPass
 
     // ── Mermaid ───────────────────────────────────────────────────────────────
 
+    /// <summary>Renders the semantic graph as a Mermaid flowchart string, excluding assertion nodes.</summary>
     public static string BuildMermaid(IReadOnlyList<Node> nodes, IReadOnlyList<Edge> edges)
     {
         nodes = nodes.Where(n => n is not AssertionNode).ToList();
@@ -87,6 +94,7 @@ public class GraphVisualizationPass : ICompilerPass
 
     // ── SVG ───────────────────────────────────────────────────────────────────
 
+    /// <summary>Renders the semantic graph as a layered SVG diagram string, excluding assertion nodes.</summary>
     public static string BuildSvg(IReadOnlyList<Node> nodes, IReadOnlyList<Edge> edges)
     {
         nodes = nodes.Where(n => n is not AssertionNode).ToList();

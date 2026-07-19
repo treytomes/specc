@@ -5,18 +5,23 @@ using Microsoft.Extensions.Logging;
 
 namespace Specc.Passes;
 
+/// <summary>Derives graph-based acceptance assertions from the semantic graph's loop and branch structure.</summary>
 public class AcceptanceCriteriaPass : ICompilerPass
 {
     private readonly ILogger<AcceptanceCriteriaPass> _logger;
 
+    /// <summary>Initialises the pass with a logger.</summary>
     public AcceptanceCriteriaPass(ILogger<AcceptanceCriteriaPass> logger)
     {
         _logger = logger;
     }
 
+    /// <inheritdoc/>
     public string  Name         => "02b-AcceptanceCriteria";
+    /// <inheritdoc/>
     public string? ArtifactFile => "00-acceptance.json";
 
+    /// <inheritdoc/>
     public async Task LoadFromArtifactAsync(string artifactPath, CompilationContext context)
     {
         var json = await File.ReadAllTextAsync(artifactPath);
@@ -25,6 +30,7 @@ public class AcceptanceCriteriaPass : ICompilerPass
         _logger.LogDebug("Loaded {Count} assertions from {Path}", context.Assertions.Count, artifactPath);
     }
 
+    /// <inheritdoc/>
     public Task ExecuteAsync(CompilationContext context)
     {
         var graph = context.SemanticGraph

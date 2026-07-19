@@ -5,21 +5,27 @@ using Microsoft.Extensions.Logging;
 
 namespace Specc.Passes;
 
+/// <summary>Produces a Mermaid flowchart and SVG diagram of the CFG basic blocks.</summary>
 public class CfgVisualizationPass : ICompilerPass
 {
     private readonly ILogger<CfgVisualizationPass> _logger;
 
+    /// <summary>Initialises the pass with a logger.</summary>
     public CfgVisualizationPass(ILogger<CfgVisualizationPass> logger)
     {
         _logger = logger;
     }
 
+    /// <inheritdoc/>
     public string  Name         => "04b-CfgVisualization";
+    /// <inheritdoc/>
     public string? ArtifactFile => "04b-cfg-flowchart.mmd";
 
+    /// <inheritdoc/>
     public Task LoadFromArtifactAsync(string artifactPath, CompilationContext context) =>
         Task.CompletedTask;
 
+    /// <inheritdoc/>
     public async Task ExecuteAsync(CompilationContext context)
     {
         if (context.CfgBlocks.Count == 0)
@@ -44,6 +50,7 @@ public class CfgVisualizationPass : ICompilerPass
 
     // ── Mermaid ───────────────────────────────────────────────────────────────
 
+    /// <summary>Renders the given CFG blocks as a Mermaid flowchart string.</summary>
     public static string BuildMermaid(IReadOnlyList<CfgBlock> blocks)
     {
         var indexMap = blocks
@@ -110,6 +117,7 @@ public class CfgVisualizationPass : ICompilerPass
 
     // ── SVG ───────────────────────────────────────────────────────────────────
 
+    /// <summary>Renders the given CFG blocks as a layered SVG diagram string.</summary>
     public static string BuildSvg(IReadOnlyList<CfgBlock> blocks)
     {
         const int NodeW    = 240;

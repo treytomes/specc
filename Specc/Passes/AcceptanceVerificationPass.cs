@@ -3,21 +3,27 @@ using Microsoft.Extensions.Logging;
 
 namespace Specc.Passes;
 
+/// <summary>Terminal pass that launches the compiled binary and diffs its stdout against the acceptance assertions.</summary>
 public class AcceptanceVerificationPass : ICompilerPass
 {
     private readonly ILogger<AcceptanceVerificationPass> _logger;
 
+    /// <summary>Initialises the pass with a logger.</summary>
     public AcceptanceVerificationPass(ILogger<AcceptanceVerificationPass> logger)
     {
         _logger = logger;
     }
 
+    /// <inheritdoc/>
     public string  Name         => "08-AcceptanceVerification";
+    /// <inheritdoc/>
     public string? ArtifactFile => null;   // terminal pass; no persistent artifact
 
+    /// <inheritdoc/>
     public Task LoadFromArtifactAsync(string artifactPath, CompilationContext context) =>
         Task.CompletedTask;
 
+    /// <inheritdoc/>
     public async Task ExecuteAsync(CompilationContext context)
     {
         var useAuthorial = context.AuthorialAssertions.Count > 0;
@@ -117,7 +123,7 @@ public class AcceptanceVerificationPass : ICompilerPass
         var outputLines = new List<string>(capacity: 256);
         try
         {
-            while (!process.StandardOutput.EndOfStream)
+            while (true)
             {
                 cts.Token.ThrowIfCancellationRequested();
                 var line = await process.StandardOutput.ReadLineAsync(cts.Token);

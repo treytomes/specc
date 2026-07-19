@@ -12,14 +12,18 @@ public class RepositoryRetrievalPass : ICompilerPass
 {
     private readonly ILogger<RepositoryRetrievalPass> _logger;
 
+    /// <summary>Initialises the pass with a logger.</summary>
     public RepositoryRetrievalPass(ILogger<RepositoryRetrievalPass> logger)
     {
         _logger = logger;
     }
 
+    /// <inheritdoc/>
     public string  Name          => "03c-RepositoryRetrieval";
+    /// <inheritdoc/>
     public string? ArtifactFile  => null;
 
+    /// <inheritdoc/>
     public async Task ExecuteAsync(CompilationContext context)
     {
         var priors = await GraphRepository.FindSimilarAsync(context);
@@ -27,6 +31,7 @@ public class RepositoryRetrievalPass : ICompilerPass
         _logger.LogInformation("Repository retrieval found {Count} similar prior(s)", priors.Count);
     }
 
+    /// <inheritdoc/>
     public Task LoadFromArtifactAsync(string artifactPath, CompilationContext context)
         => Task.CompletedTask;
 }
@@ -39,14 +44,18 @@ public class RepositoryPersistPass : ICompilerPass
 {
     private readonly ILogger<RepositoryPersistPass> _logger;
 
+    /// <summary>Initialises the pass with a logger.</summary>
     public RepositoryPersistPass(ILogger<RepositoryPersistPass> logger)
     {
         _logger = logger;
     }
 
+    /// <inheritdoc/>
     public string  Name          => "09-RepositoryPersist";
+    /// <inheritdoc/>
     public string? ArtifactFile  => null;
 
+    /// <inheritdoc/>
     public async Task ExecuteAsync(CompilationContext context)
     {
         if (context.AcceptancePassed == false)
@@ -58,6 +67,7 @@ public class RepositoryPersistPass : ICompilerPass
         _logger.LogInformation("Repository: persisted compilation unit for {SpecPath}", context.SpecPath);
     }
 
+    /// <inheritdoc/>
     public Task LoadFromArtifactAsync(string artifactPath, CompilationContext context)
         => Task.CompletedTask;
 }

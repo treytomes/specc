@@ -18,19 +18,24 @@ namespace Specc.Passes;
 //   07-program.dll            — the managed PE (framework-dependent)
 //   07-program.runtimeconfig.json
 //   {ProgramName}             — apphost-patched native launcher, directly executable
+/// <summary>Emits a runnable .NET assembly from the stack IR using <c>PersistedAssemblyBuilder</c> and patches an apphost launcher.</summary>
 [ExcludeFromCodeCoverage(Justification = "PE emit + apphost filesystem I/O; covered by scripts/test.sh")]
 public class AssemblyEmitPass : ICompilerPass
 {
     private readonly ILogger<AssemblyEmitPass> _logger;
 
+    /// <summary>Initialises the pass with a logger.</summary>
     public AssemblyEmitPass(ILogger<AssemblyEmitPass> logger)
     {
         _logger = logger;
     }
 
+    /// <inheritdoc/>
     public string Name          => "07-Assembly";
+    /// <inheritdoc/>
     public string? ArtifactFile  => "07-program.dll";
 
+    /// <inheritdoc/>
     public async Task ExecuteAsync(CompilationContext context)
     {
         if (context.StackIr.Count == 0)
@@ -359,6 +364,7 @@ public class AssemblyEmitPass : ICompilerPass
         return -1;
     }
 
+    /// <inheritdoc/>
     public Task LoadFromArtifactAsync(string artifactPath, CompilationContext context)
     {
         context.AssemblyPath = artifactPath;

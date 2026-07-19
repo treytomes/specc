@@ -9,6 +9,7 @@ namespace Specc.Passes;
 /// </summary>
 public static class SpecConstructLibrary
 {
+    /// <summary>System prompt preamble establishing the compiler front-end role.</summary>
     public static string Preamble => """
         You are a compiler front-end. Read a program description in Markdown and extract it as a structured .spec file.
 
@@ -18,6 +19,7 @@ public static class SpecConstructLibrary
 
         """;
 
+    /// <summary>Prompt section describing <c>loop:</c> blocks for fixed-range iteration.</summary>
     public static string LoopSection => """
 
         For programs that iterate over a fixed range of integers, use a loop: block:
@@ -40,6 +42,7 @@ public static class SpecConstructLibrary
 
         """;
 
+    /// <summary>Prompt section describing <c>branch:</c> blocks for conditional output inside a loop.</summary>
     public static string BranchSection => """
 
         For conditional output inside a loop, use branch: blocks (evaluated in declaration order):
@@ -77,6 +80,7 @@ public static class SpecConstructLibrary
 
         """;
 
+    /// <summary>Prompt section describing <c>assign:</c> blocks for arithmetic and variable copies.</summary>
     public static string ArithSection => """
 
         For arithmetic on variables, use assign: blocks:
@@ -116,6 +120,7 @@ public static class SpecConstructLibrary
 
         """;
 
+    /// <summary>Prompt section describing <c>variable: source: stdin</c> and unconditional <c>print:</c>.</summary>
     public static string InputSection => """
 
         For programs that read user input, use variable: with source: stdin:
@@ -147,6 +152,7 @@ public static class SpecConstructLibrary
 
         """;
 
+    /// <summary>Prompt section describing fixed-size array variable declarations.</summary>
     public static string ArraySection => """
 
         For programs that operate on a fixed-size array, declare it with variable: and an array type:
@@ -158,6 +164,7 @@ public static class SpecConstructLibrary
 
         """;
 
+    /// <summary>Prompt section describing <c>while:</c> loops including var-vs-var form and <c>true_assign:</c> bodies.</summary>
     public static string WhileSection => """
 
         For programs with an unbounded loop (e.g. "repeat until n equals 1"), use while::
@@ -243,6 +250,7 @@ public static class SpecConstructLibrary
 
         """;
 
+    /// <summary>Prompt section describing <c>random:</c> blocks for generating random integers.</summary>
     public static string RandomSection => """
 
         For programs that need a random integer, use random::
@@ -265,6 +273,7 @@ public static class SpecConstructLibrary
 
         """;
 
+    /// <summary>Closing rules appended to every assembled prompt reminding the model to output only spec content.</summary>
     public static string Rules => """
 
         Rules:
@@ -272,6 +281,7 @@ public static class SpecConstructLibrary
         2. If the document describes a program that cannot be expressed in this format, output a single line: ERROR: <reason>
         """;
 
+    /// <summary>Builds a focused extraction prompt from <see cref="Preamble"/>, the requested construct sections, and <see cref="Rules"/>.</summary>
     public static string Assemble(IEnumerable<string> tags)
     {
         var sb = new StringBuilder(Preamble);

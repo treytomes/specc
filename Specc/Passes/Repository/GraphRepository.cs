@@ -3,6 +3,7 @@ using Specc.Graph;
 
 namespace Specc.Passes.Repository;
 
+/// <summary>Persists and retrieves compilation units from the on-disk graph repository.</summary>
 public static class GraphRepository
 {
     private static readonly JsonSerializerOptions JsonOpts = new()
@@ -20,6 +21,7 @@ public static class GraphRepository
         "06-program.il",
     ];
 
+    /// <summary>Stores the completed compilation unit in the repository, skipping if the spec hash already exists or acceptance failed.</summary>
     public static async Task PersistAsync(CompilationContext context, DateTimeOffset? compiledAt = null)
     {
         if (context.SpecPath is null) return;
@@ -89,9 +91,7 @@ public static class GraphRepository
         await File.WriteAllTextAsync(indexPath, json);
     }
 
-    // Returns up to topK prior specs whose stored spec text contains keywords matching the
-    // given classifier tags, ranked by number of matching tags descending.
-    // Skips entries with empty SpecText (persisted before this field was added).
+    /// <summary>Returns up to <paramref name="topK"/> prior specs whose stored spec text best matches the given classifier tags.</summary>
     public static async Task<List<(string ProgramName, string SpecText)>> FindPriorsByTagsAsync(
         string repositoryPath, string[] tags, int topK = 2)
     {
@@ -117,6 +117,7 @@ public static class GraphRepository
             .ToList();
     }
 
+    /// <summary>Returns up to <paramref name="topK"/> nodes from prior compilations whose embeddings are cosine-similar to nodes in the current context.</summary>
     public static async Task<List<SimilarPrior>> FindSimilarAsync(
         CompilationContext context, float threshold = 0.85f, int topK = 5)
     {

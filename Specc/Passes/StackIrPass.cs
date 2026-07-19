@@ -5,18 +5,23 @@ using Microsoft.Extensions.Logging;
 
 namespace Specc.Passes;
 
+/// <summary>Lowers CFG basic blocks to a linear sequence of stack IR instructions.</summary>
 public class StackIrPass : ICompilerPass
 {
     private readonly ILogger<StackIrPass> _logger;
 
+    /// <summary>Initialises the pass with a logger.</summary>
     public StackIrPass(ILogger<StackIrPass> logger)
     {
         _logger = logger;
     }
 
+    /// <inheritdoc/>
     public string Name          => "05-StackIR";
+    /// <inheritdoc/>
     public string? ArtifactFile  => "05-stackir.json";
 
+    /// <inheritdoc/>
     public async Task LoadFromArtifactAsync(string artifactPath, CompilationContext context)
     {
         var json = await File.ReadAllTextAsync(artifactPath);
@@ -27,6 +32,7 @@ public class StackIrPass : ICompilerPass
         context.StackIr = System.Text.Json.JsonSerializer.Deserialize<List<StackInstruction>>(json, opts) ?? [];
     }
 
+    /// <inheritdoc/>
     public Task ExecuteAsync(CompilationContext context)
     {
         if (context.CfgBlocks.Count == 0)

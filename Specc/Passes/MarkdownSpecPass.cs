@@ -11,23 +11,27 @@ namespace Specc.Passes;
 // Runs only when the input file has a .md extension.
 // Makes two LLM calls: one to extract a .spec, one to extract explicit acceptance criteria.
 // When the input is already a .spec file this pass is a no-op (ArtifactFile returns null).
+/// <summary>Extracts a structured <c>.spec</c> and authorial acceptance criteria from a Markdown program description using an LLM.</summary>
 [ExcludeFromCodeCoverage(Justification = "LLM I/O path; covered by scripts/test.sh")]
 public class MarkdownSpecPass : ICompilerPass
 {
     private readonly IChatClient _chat;
     private readonly ILogger<MarkdownSpecPass> _logger;
 
+    /// <summary>Initialises the pass with a chat client and a logger.</summary>
     public MarkdownSpecPass(IChatClient chat, ILogger<MarkdownSpecPass> logger)
     {
         _chat   = chat;
         _logger = logger;
     }
 
+    /// <inheritdoc/>
     public string Name => "00-MarkdownSpec";
 
-    // Only registered when input is .md; pipeline skip logic uses this on re-runs.
+    /// <inheritdoc/>
     public string? ArtifactFile => "00-extracted.spec";
 
+    /// <inheritdoc/>
     public async Task ExecuteAsync(CompilationContext context)
     {
         var sw       = Stopwatch.StartNew();
@@ -148,6 +152,7 @@ public class MarkdownSpecPass : ICompilerPass
             Name, sw.ElapsedMilliseconds, specArtifact);
     }
 
+    /// <inheritdoc/>
     public async Task LoadFromArtifactAsync(string artifactPath, CompilationContext context)
     {
         // The artifact IS the extracted .spec — just redirect SpecPath.
@@ -300,7 +305,7 @@ public class MarkdownSpecPass : ICompilerPass
         }
     }
 
-    // Evaluates extracted rules locally, same algorithm as AcceptanceCriteriaPass.
+    /// <summary>Evaluates the extracted authorial rules into a list of per-iteration assertion records.</summary>
     public static List<AssertionRecord> EvaluateRules(AuthorialCriteriaDto dto)
     {
         if (dto.Rules == null || dto.Rules.Count == 0 || dto.LoopTo <= dto.LoopFrom)
@@ -337,8 +342,7 @@ public class MarkdownSpecPass : ICompilerPass
         return assertions;
     }
 
-    // Returns the list of construct keywords that were expected (per classifier tags) but
-    // are absent from the extracted spec text. Empty list means consistent.
+    /// <summary>Returns any construct keywords expected by the classifier tags that are absent from the extracted spec text.</summary>
     public static List<string> ConsistencyMissing(string[] tags, string specText)
     {
         var missing = new List<string>();
@@ -507,18 +511,29 @@ public class MarkdownSpecPass : ICompilerPass
         """;
 }
 
+/// <summary>Deserialized acceptance criteria extracted by the LLM from Markdown prose.</summary>
 public class AuthorialCriteriaDto
 {
+    /// <summary>Inclusive loop start value.</summary>
     public int LoopFrom { get; set; } = 1;
+
+    /// <summary>Inclusive loop end value.</summary>
     public int LoopTo   { get; set; } = 0;
 
+    /// <summary>Ordered list of divisor-based and default rules.</summary>
     [JsonPropertyName("rules")]
     public List<AuthorialRuleDto>? Rules { get; set; }
 }
 
+/// <summary>A single authorial output rule: divisor-based or default fallback.</summary>
 public class AuthorialRuleDto
 {
+    /// <summary>Modulo divisor for this rule; 0 for the default rule.</summary>
     public int    Divisor   { get; set; }
+
+    /// <summary>True when this is the fallback rule applied when no divisor matches.</summary>
     public bool   IsDefault { get; set; }
+
+    /// <summary>Expected output string, or <c>{n}</c> for the loop counter.</summary>
     public string? Expected { get; set; }
 }

@@ -3,6 +3,7 @@ using System.Text.Json;
 
 namespace Specc.Passes;
 
+/// <summary>Writes a <c>manifest.json</c> file summarising all artifacts and their SHA-256 hashes.</summary>
 public static class ManifestWriter
 {
     private static readonly JsonSerializerOptions JsonOpts = new() { WriteIndented = true };
@@ -24,6 +25,7 @@ public static class ManifestWriter
         "07-program.dll",
     ];
 
+    /// <summary>Writes <c>manifest.json</c> to the artifacts directory, listing all present artifact files and their hashes.</summary>
     public static async Task WriteAsync(CompilationContext context)
     {
         var specHash = File.Exists(context.SpecPath)
@@ -41,6 +43,7 @@ public static class ManifestWriter
         await File.WriteAllTextAsync(Path.Combine(context.ArtifactsDir, "manifest.json"), json);
     }
 
+    /// <summary>Returns the lowercase hexadecimal SHA-256 hash of the file at the given path.</summary>
     public static string HashFile(string path)
     {
         using var stream = File.OpenRead(path);

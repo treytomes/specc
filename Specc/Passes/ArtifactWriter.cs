@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Specc.Passes;
 
+/// <summary>Writes the output artifact for each pass to the artifacts directory.</summary>
 [ExcludeFromCodeCoverage(Justification = "Filesystem I/O dispatch; covered by scripts/test.sh")]
 public static class ArtifactWriter
 {
@@ -14,6 +15,7 @@ public static class ArtifactWriter
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
 
+    /// <summary>Writes the artifact for the given pass to the artifacts directory of the context.</summary>
     public static async Task WritePassArtifactAsync(
         ICompilerPass pass, CompilationContext ctx, ILogger logger)
     {

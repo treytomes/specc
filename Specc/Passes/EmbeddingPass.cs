@@ -9,12 +9,14 @@ namespace Specc.Passes;
 
 // Embeds each graph node independently using mxbai-embed-large.
 // Embeddings are metadata — they don't change the graph structure.
+/// <summary>Produces a floating-point embedding vector for every non-assertion graph node using mxbai-embed-large.</summary>
 [ExcludeFromCodeCoverage(Justification = "Requires live Ollama; covered by scripts/test.sh")]
 public class EmbeddingPass : ICompilerPass
 {
     private readonly IEmbeddingGenerator<string, Embedding<float>> _embedder;
     private readonly ILogger<EmbeddingPass> _logger;
 
+    /// <summary>Initialises the pass with an embedding generator and a logger.</summary>
     public EmbeddingPass(
         IEmbeddingGenerator<string, Embedding<float>> embedder,
         ILogger<EmbeddingPass> logger)
@@ -23,9 +25,12 @@ public class EmbeddingPass : ICompilerPass
         _logger   = logger;
     }
 
+    /// <inheritdoc/>
     public string Name          => "03-Embeddings";
+    /// <inheritdoc/>
     public string? ArtifactFile  => "03-embeddings.json";
 
+    /// <inheritdoc/>
     public async Task LoadFromArtifactAsync(string artifactPath, CompilationContext context)
     {
         var json  = await File.ReadAllTextAsync(artifactPath);
@@ -43,6 +48,7 @@ public class EmbeddingPass : ICompilerPass
         public float[] Vector { get; set; } = [];
     }
 
+    /// <inheritdoc/>
     public Task ExecuteAsync(CompilationContext context)
     {
         var graph = context.SemanticGraph ?? throw new InvalidOperationException("SemanticGraph not set");

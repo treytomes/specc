@@ -2,17 +2,20 @@ using Microsoft.Extensions.Logging;
 
 namespace Specc.Passes;
 
+/// <summary>Runs the ordered list of compiler passes, skipping any whose artifact already exists.</summary>
 public class CompilationPipeline
 {
     private readonly IEnumerable<ICompilerPass> _passes;
     private readonly ILogger<CompilationPipeline> _logger;
 
+    /// <summary>Initialises the pipeline with an ordered pass list and a logger.</summary>
     public CompilationPipeline(IEnumerable<ICompilerPass> passes, ILogger<CompilationPipeline> logger)
     {
         _passes = passes;
         _logger = logger;
     }
 
+    /// <summary>Executes all passes in order, loading from disk when an artifact exists.</summary>
     public async Task RunAsync(CompilationContext context)
     {
         foreach (var pass in _passes)
