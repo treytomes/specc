@@ -49,6 +49,11 @@ public class RepositoryPersistPass : ICompilerPass
 
     public async Task ExecuteAsync(CompilationContext context)
     {
+        if (context.AcceptancePassed == false)
+        {
+            _logger.LogWarning("Repository: skipping persist — acceptance verification failed");
+            return;
+        }
         await GraphRepository.PersistAsync(context);
         _logger.LogInformation("Repository: persisted compilation unit for {SpecPath}", context.SpecPath);
     }

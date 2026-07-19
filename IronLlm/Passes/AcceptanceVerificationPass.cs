@@ -26,6 +26,8 @@ public class AcceptanceVerificationPass : ICompilerPass
         if (assertions.Count == 0)
         {
             _logger.LogDebug("No assertions — AcceptanceVerificationPass is a no-op");
+            context.AcceptancePassed = true;
+            context.AssertionCount   = 0;
             return;
         }
 
@@ -59,6 +61,8 @@ public class AcceptanceVerificationPass : ICompilerPass
         if (failures.Count > 0)
             throw new AcceptanceFailureException(failures);
 
+        context.AcceptancePassed = true;
+        context.AssertionCount   = assertions.Count;
         _logger.LogInformation(
             "Pass {Name} completed in {ElapsedMs}ms — {Count}/{Total} assertions passed",
             Name, sw.ElapsedMilliseconds, assertions.Count, assertions.Count);

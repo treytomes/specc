@@ -32,4 +32,11 @@ public class CompilationContext
 
     // Stdout captured during AcceptanceVerificationPass; avoids a second process launch in tests.
     public string[]? VerificationOutput { get; set; }
+
+    // Set by AcceptanceVerificationPass on completion.
+    // null  = verification has not run yet (e.g. loading from artifact)
+    // true  = all assertions passed (or no assertions — unverified but not wrong)
+    // false = one or more assertions failed
+    public bool? AcceptancePassed { get; set; }
+    public int   AssertionCount   { get; set; }
 }

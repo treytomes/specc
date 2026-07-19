@@ -24,6 +24,11 @@ public static class GraphRepository
     {
         if (context.SpecPath is null) return;
 
+        // Never persist a compilation whose acceptance verification explicitly failed.
+        // AcceptancePassed == null means verification didn't run (loaded from artifact) — allow persist.
+        // AcceptancePassed == false means assertions ran and failed — block persist.
+        if (context.AcceptancePassed == false) return;
+
         var specHash = File.Exists(context.SpecPath)
             ? ManifestWriter.HashFile(context.SpecPath)
             : "unknown";
@@ -73,7 +78,9 @@ public static class GraphRepository
             CfgPath:           cfgPath,
             StackIrPath:       stackIrPath,
             MsilPath:          msilPath,
-            SpecText:          specText
+            SpecText:          specText,
+            AcceptancePassed:  context.AcceptancePassed ?? false,
+            AssertionCount:    context.AssertionCount
         );
 
         index.Units.Add(unit);
@@ -99,9 +106,11 @@ public static class GraphRepository
 
         return index.Units
             .Where(u => !string.IsNullOrEmpty(u.SpecText))
-            .Select(u => (u.ProgramName, u.SpecText, Score: CountMatches(u.SpecText, tags)))
+            .Select(u => (u.ProgramName, u.SpecText, Score: CountMatches(u.SpecText, tags),
+                          Verified: u.AcceptancePassed && u.AssertionCount > 0))
             .Where(x => x.Score > 0)
             .OrderByDescending(x => x.Score)
+            .ThenByDescending(x => x.Verified)   // verified entries rank above unverified at same score
             .ThenByDescending(x => x.SpecText.Length)
             .Take(topK)
             .Select(x => (x.ProgramName, x.SpecText))
