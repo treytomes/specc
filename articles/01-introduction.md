@@ -110,4 +110,4 @@ This brings a new experiment to the forefront: if programs are graphs with seman
 
 I don't know yet whether any of that will work.  But the pipeline compiles FizzBuzz, Fibonacci, BubbleSort, a guessing game with random numbers and interactive input, and a Collatz sequence runner.  It is technically "Turing complete" (quotes intended, the 3B model couldn't get there on its own).  The spec-to-binary path is solid.  The interesting questions are now about what you can do with the graph.
 
-The code is on GitHub.  Future articles will go deeper on specific passes - the semantic graph, the acceptance circuit, and the embedding geometry experiments.
+The code is on [GitHub](https://github.com/treytomes/specc).  Future articles will go deeper on specific passes - the semantic graph, the acceptance circuit, and the embedding geometry experiments.
