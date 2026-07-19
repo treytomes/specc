@@ -1,7 +1,7 @@
 # Spec 09 — CLI, App Hosting, Logging, and Dependency Injection
 
 **Status:** Design  
-**Scope:** `Program.cs`, `IronLlm.csproj`, new `IronLlm.csproj` package references
+**Scope:** `Program.cs`, `Specc.csproj`, new `Specc.csproj` package references
 
 ## Packages
 

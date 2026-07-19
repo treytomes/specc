@@ -24,17 +24,17 @@ check() {
 
 # ── Build ────────────────────────────────────────────────────────────────────
 echo "Building..."
-dotnet build "$REPO_ROOT/IronLlm/IronLlm.csproj" --nologo -q
-dotnet build "$REPO_ROOT/IronLlm.Tests/IronLlm.Tests.csproj" --nologo -q
+dotnet build "$REPO_ROOT/Specc/Specc.csproj" --nologo -q
+dotnet build "$REPO_ROOT/Specc.Tests/Specc.Tests.csproj" --nologo -q
 
 # ── Unit tests + coverage ────────────────────────────────────────────────────
 echo
 echo "Running unit tests..."
 TEST_RESULTS="$REPO_ROOT/TestResults"
-dotnet test "$REPO_ROOT/IronLlm.Tests/IronLlm.Tests.csproj" \
+dotnet test "$REPO_ROOT/Specc.Tests/Specc.Tests.csproj" \
   --no-build --nologo \
   --collect:"XPlat Code Coverage" \
-  --settings "$REPO_ROOT/IronLlm.Tests/coverlet.runsettings" \
+  --settings "$REPO_ROOT/Specc.Tests/coverlet.runsettings" \
   --results-directory "$TEST_RESULTS"
 
 COBERTURA=$(find "$TEST_RESULTS" -name 'coverage.cobertura.xml' | sort | tail -1)
@@ -52,7 +52,7 @@ check "unit test coverage ≥ 80% (got ${coverage}%)" \
 # ── Run pipeline ─────────────────────────────────────────────────────────────
 echo "Running pipeline..."
 dotnet run \
-    --project "$REPO_ROOT/IronLlm/IronLlm.csproj" \
+    --project "$REPO_ROOT/Specc/Specc.csproj" \
     --no-build \
     -- compile --spec "$SPEC" --out "$ARTIFACTS"
 

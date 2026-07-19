@@ -27,7 +27,7 @@ Expected clusters:
 
 ## Implementation
 
-A new `scripts/geometry.sh` (or a standalone `IronLlm.Analysis` tool) that:
+A new `scripts/geometry.sh` (or a standalone `Specc.Analysis` tool) that:
 
 1. Loads all `03-embeddings.json` artifacts from the repository.
 2. Computes a pairwise similarity matrix.

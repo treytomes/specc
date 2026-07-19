@@ -55,8 +55,8 @@ Add `BubbleSort_FullPipeline` to `ExampleProgramTests.cs` (spec text path, no Ol
 
 After a successful run:
 - `repository/index.json` contains a BubbleSort entry with all 5 artifact paths populated.
-- A second run of `./iron-llm examples/BubbleSort` logs at least one similar prior at ≥ 0.85 from a prior FizzBuzz-family compilation.
+- A second run of `./specc examples/BubbleSort` logs at least one similar prior at ≥ 0.85 from a prior FizzBuzz-family compilation.
 
 ## Acceptance Criterion
 
-`./iron-llm examples/BubbleSort` completes all passes, binary runs, stdout matches the 10 expected sorted lines, `08-AcceptanceVerification` logs `10/10 assertions passed`.
+`./specc examples/BubbleSort` completes all passes, binary runs, stdout matches the 10 expected sorted lines, `08-AcceptanceVerification` logs `10/10 assertions passed`.

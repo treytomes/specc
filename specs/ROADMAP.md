@@ -1,4 +1,4 @@
-# IronLlm Roadmap
+# Specc Roadmap
 
 This compiler is an experiment in treating programs as semantic objects. The LLM is not the orchestrator — it does two specific things: extract structure from prose (MarkdownSpecPass) and produce per-node embeddings (EmbeddingPass). Everything else is deterministic. The goal is a pipeline where program structure is queryable, comparable, and eventually refinable by gradient.
 

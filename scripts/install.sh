@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Verifies and installs dependencies required to build and run IronLlm.
+# Verifies and installs dependencies required to build and run Specc.
 # Safe to run multiple times — skips anything already present.
 set -euo pipefail
 
@@ -110,7 +110,7 @@ fi
 
 # ── NuGet restore ─────────────────────────────────────────────────────────────
 echo "Restoring NuGet packages..."
-if dotnet restore "$REPO_ROOT/IronLlm.slnx" -q 2>/dev/null || dotnet restore "$REPO_ROOT/IronLlm/IronLlm.csproj" -q; then
+if dotnet restore "$REPO_ROOT/Specc.slnx" -q 2>/dev/null || dotnet restore "$REPO_ROOT/Specc/Specc.csproj" -q; then
     ok "NuGet packages restored"
 else
     missing "NuGet restore" "check network connectivity or NuGet feed"

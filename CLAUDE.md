@@ -1,8 +1,8 @@
-# IronLlm — CLAUDE.md
+# Specc — CLAUDE.md
 
 ## What this project is
 
-IronLlm is a compiler that treats programs as semantic objects rather than text. It takes a `.spec` or Markdown description of a program and lowers it through a series of deterministic passes to a native executable. An LLM-powered embedding pass attaches learned vectors to each graph node — meaning as metadata, not as a driver of control flow.
+Specc is a compiler that treats programs as semantic objects rather than text. It takes a `.spec` or Markdown description of a program and lowers it through a series of deterministic passes to a native executable. An LLM-powered embedding pass attaches learned vectors to each graph node — meaning as metadata, not as a driver of control flow.
 
 This is not an agentic coding platform. The LLM does not author code, drive decisions, or orchestrate the pipeline. It does two specific things: extract a structured spec from Markdown prose (ministral-3b), and produce per-node embeddings that make graph nodes semantically comparable (mxbai-embed-large). Everything else — CFG construction, stack lowering, IL emission, acceptance verification — is deterministic code.
 
@@ -11,11 +11,11 @@ The experiment this is pointing toward: if programs are graphs with semantic emb
 ## Project layout
 
 ```
-IronLlm/
+Specc/
   Graph/          Node, Edge, CfgBlock, StackInstruction type definitions
   Passes/         One file per compiler pass + CompilationContext + ArtifactWriter
   Program.cs      Incremental pipeline runner (System.CommandLine + DI)
-IronLlm.Tests/
+Specc.Tests/
   Passes/         Per-pass unit tests
   Fixtures/       PipelineFixtures, FakeLogger
 examples/

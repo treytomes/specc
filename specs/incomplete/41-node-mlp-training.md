@@ -2,7 +2,7 @@
 
 **Status:** Not started
 **Depends on:** Spec 04a ✓ (MLP forward pass and plumbing in place)
-**Scope:** `IronLlm/Learning/NodeMlpTrainer.cs`; new `scripts/train.sh`; `geometry.py` comparison
+**Scope:** `Specc/Learning/NodeMlpTrainer.cs`; new `scripts/train.sh`; `geometry.py` comparison
 
 ## What this spec is
 
@@ -63,7 +63,7 @@ dL/dW1, dL/dB1  ←  hidden layer gradients (chain rule through ReLU)
 
 ## Implementation
 
-### `IronLlm/Learning/NodeMlpTrainer.cs`
+### `Specc/Learning/NodeMlpTrainer.cs`
 
 ```csharp
 public class NodeMlpTrainer

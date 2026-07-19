@@ -1,11 +1,11 @@
 # Spec 20 — Roadmap to Self-Hosting
 
 **Status:** Design / Placeholder  
-**Scope:** No implementation — milestone map for the constructs required to compile IronLlm itself
+**Scope:** No implementation — milestone map for the constructs required to compile Specc itself
 
 ## The Goal
 
-A compiler that can compile itself is the canonical completeness test. IronLlm's long-term target is to accept a Markdown description of a C#-like program — classes, methods, recursion, collections, file I/O — and lower it through the semantic graph pipeline to a running native binary. Once it can describe and compile its own passes, the feedback loop closes: each compilation adds to the repository, and future compilations draw on prior ones as grounding.
+A compiler that can compile itself is the canonical completeness test. Specc's long-term target is to accept a Markdown description of a C#-like program — classes, methods, recursion, collections, file I/O — and lower it through the semantic graph pipeline to a running native binary. Once it can describe and compile its own passes, the feedback loop closes: each compilation adds to the repository, and future compilations draw on prior ones as grounding.
 
 BubbleSort (Specs 15–19) establishes the first constructs beyond the FizzBuzz family: arrays, nested loops, comparison, swap. The gap between BubbleSort and self-hosting is large but enumerable.
 

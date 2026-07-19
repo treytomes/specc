@@ -1,10 +1,10 @@
-# IronLlm
+# Specc
 
-A compiler that treats programs as semantic objects rather than text. You describe a program in Markdown; IronLlm extracts a typed semantic graph, attaches learned embeddings to each node, verifies the program against its own acceptance criteria, and lowers the graph to a native executable.
+A compiler that treats programs as semantic objects rather than text. You describe a program in Markdown; Specc extracts a typed semantic graph, attaches learned embeddings to each node, verifies the program against its own acceptance criteria, and lowers the graph to a native executable.
 
 ## The idea
 
-Most "AI + code" tools use the LLM as author or orchestrator. IronLlm is something different: the LLM is one optional pass in a deterministic pipeline, and what it contributes is *meaning as metadata* — per-node vector embeddings that make graph nodes semantically comparable. The graph is not a transient parse tree; it is the program. It persists, carries its acceptance criteria as first-class nodes, and the semantic normalization pass catches cases where a node's meaning drifts from its structural role.
+Most "AI + code" tools use the LLM as author or orchestrator. Specc is something different: the LLM is one optional pass in a deterministic pipeline, and what it contributes is *meaning as metadata* — per-node vector embeddings that make graph nodes semantically comparable. The graph is not a transient parse tree; it is the program. It persists, carries its acceptance criteria as first-class nodes, and the semantic normalization pass catches cases where a node's meaning drifts from its structural role.
 
 The deeper experiment: if programs are graphs with semantic embeddings, they become queryable and comparable across compilations. Two programs that implement the same intent should be close in embedding space. Graph structure could be refined by gradient (Spec 04). Prior compilations could inform future ones (Spec 03). This is the differentiable semantic graph — program structure as something that can be searched, interpolated, and refined, not just parsed and executed.
 
@@ -167,11 +167,11 @@ Run any example:
 ## Project structure
 
 ```
-IronLlm/
+Specc/
   Graph/          Node.cs, Edge.cs, CfgBlock.cs, StackInstruction.cs
   Passes/         One file per pass + CompilationContext + ArtifactWriter
   Program.cs      CLI entry point (System.CommandLine + DI + Serilog)
-IronLlm.Tests/
+Specc.Tests/
   Passes/         Per-pass unit tests
   Fixtures/       PipelineFixtures, FakeLogger
 examples/

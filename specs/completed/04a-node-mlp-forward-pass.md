@@ -3,7 +3,7 @@
 **Status:** Completed
 **Depends on:** Spec 35 ✓ (geometry baseline confirmed — 2/3 cluster checks pass)
 **Blocks:** Spec 41 (training loop — needs the plumbing in place first)
-**Scope:** New `IronLlm/Learning/` directory; new `NodeMlpPass.cs`; `geometry.py` rerun
+**Scope:** New `Specc/Learning/` directory; new `NodeMlpPass.cs`; `geometry.py` rerun
 
 ## What this spec is
 
@@ -38,7 +38,7 @@ zero vector.
 
 ## Implementation
 
-### `IronLlm/Learning/NodeMlp.cs`
+### `Specc/Learning/NodeMlp.cs`
 
 Plain `float[][]` weight matrices — no ML framework dependency:
 
@@ -56,7 +56,7 @@ public class NodeMlp
 
 `Forward` computes: `W2 * ReLU(W1 * [nodeEmb ∥ neighborMean] + B1) + B2`.
 
-### `IronLlm/Learning/NodeMlpRegistry.cs`
+### `Specc/Learning/NodeMlpRegistry.cs`
 
 Owns one `NodeMlp` per kind. Loads from / saves to `repository/node-mlp-weights.json`.
 On first run (no weights file), initializes with Xavier uniform: `±sqrt(6 / (fan_in + fan_out))`.
@@ -70,7 +70,7 @@ public class NodeMlpRegistry
 }
 ```
 
-### `IronLlm/Passes/NodeMlpPass.cs`
+### `Specc/Passes/NodeMlpPass.cs`
 
 New pass, runs after `SemanticNormalizationPass` (03b) and `RepositoryRetrievalPass` (03c):
 

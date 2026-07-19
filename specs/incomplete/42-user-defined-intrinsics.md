@@ -252,15 +252,15 @@ follow-on spec if the primary approach fails in practice.
 
 | File | Change |
 |---|---|
-| `IronLlm/Graph/IntrinsicLibrary.cs` | Add `LoadExtensions(path)` and JSON deserialization for `intrinsics.json` |
-| `IronLlm/Graph/Nodes.cs` | Add `CallNode` with JSON discriminator `"Call"` |
-| `IronLlm/Passes/SemanticGraphPass.cs` | Parse `call:` blocks into `CallNode` |
-| `IronLlm/Passes/CfgPass.cs` | Lower `CallNode` → `ldarg_*` + `call {name}` CFG instructions |
-| `IronLlm/Passes/StackIrPass.cs` | Patterns for `ldarg_int`, `ldarg_str`, `ldarg_var`, `call {name}` |
-| `IronLlm/Passes/SpecConstructLibrary.cs` | Add `CallSection`, update `Assemble` for `"call"` tag |
-| `IronLlm/Passes/MarkdownSpecPass.cs` | Add `"call"` to classifier prompt |
-| `IronLlm/Passes/EmbeddingPass.cs` | Skip `CallNode` (like `AssertionNode`) |
-| `IronLlm/Program.cs` | Add `--intrinsics` option; call `IntrinsicLibrary.LoadExtensions` at startup |
+| `Specc/Graph/IntrinsicLibrary.cs` | Add `LoadExtensions(path)` and JSON deserialization for `intrinsics.json` |
+| `Specc/Graph/Nodes.cs` | Add `CallNode` with JSON discriminator `"Call"` |
+| `Specc/Passes/SemanticGraphPass.cs` | Parse `call:` blocks into `CallNode` |
+| `Specc/Passes/CfgPass.cs` | Lower `CallNode` → `ldarg_*` + `call {name}` CFG instructions |
+| `Specc/Passes/StackIrPass.cs` | Patterns for `ldarg_int`, `ldarg_str`, `ldarg_var`, `call {name}` |
+| `Specc/Passes/SpecConstructLibrary.cs` | Add `CallSection`, update `Assemble` for `"call"` tag |
+| `Specc/Passes/MarkdownSpecPass.cs` | Add `"call"` to classifier prompt |
+| `Specc/Passes/EmbeddingPass.cs` | Skip `CallNode` (like `AssertionNode`) |
+| `Specc/Program.cs` | Add `--intrinsics` option; call `IntrinsicLibrary.LoadExtensions` at startup |
 
 ---
 

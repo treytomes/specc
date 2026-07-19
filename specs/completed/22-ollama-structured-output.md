@@ -1,7 +1,7 @@
 # Spec 22 — Ollama Structured Output via JSON Schema
 
 **Status:** Incomplete  
-**Scope:** `MarkdownSpecPass.cs`, `IronLlm.csproj`; all other passes unchanged
+**Scope:** `MarkdownSpecPass.cs`, `Specc.csproj`; all other passes unchanged
 
 ## Motivation
 

@@ -1,0 +1,59 @@
+[
+  {
+    "label": "entry",
+    "instructions": [
+      "init n = 1"
+    ],
+    "successorTrue": "loop_test"
+  },
+  {
+    "label": "loop_test",
+    "instructions": [
+      "loop_start: check n \u003C= 100"
+    ],
+    "successorTrue": "fizzbuzz_check",
+    "successorFalse": "exit"
+  },
+  {
+    "label": "fizzbuzz_check",
+    "instructions": [
+      "check divisible_by_15: n % 15 == 0"
+    ],
+    "successorTrue": "print_n",
+    "successorFalse": "fizz_check"
+  },
+  {
+    "label": "fizz_check",
+    "instructions": [
+      "check divisible_by_3: n % 3 == 0"
+    ],
+    "successorTrue": "print_n",
+    "successorFalse": "buzz_check"
+  },
+  {
+    "label": "buzz_check",
+    "instructions": [
+      "check divisible_by_5: n % 5 == 0"
+    ],
+    "successorTrue": "print_n",
+    "successorFalse": "loop_inc"
+  },
+  {
+    "label": "print_n",
+    "instructions": [
+      "print {n}"
+    ],
+    "successorTrue": "loop_inc"
+  },
+  {
+    "label": "loop_inc",
+    "instructions": [
+      "increment n: n = n \u002B 1"
+    ],
+    "successorTrue": "loop_test"
+  },
+  {
+    "label": "exit",
+    "instructions": []
+  }
+]

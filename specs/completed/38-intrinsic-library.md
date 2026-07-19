@@ -220,8 +220,8 @@ case OpCode.Intrinsic:
 ### Scope
 
 This spec covers:
-- `IntrinsicDescriptor` and `IntrinsicStep` types in `IronLlm/Graph/`
-- `IntrinsicLibrary` static class in `IronLlm/Passes/` (or a new `IronLlm/Intrinsics/` folder)
+- `IntrinsicDescriptor` and `IntrinsicStep` types in `Specc/Graph/`
+- `IntrinsicLibrary` static class in `Specc/Passes/` (or a new `Specc/Intrinsics/` folder)
 - Migration of `ReadLine`, `ParseInt`, `Concat`, and `Call` opcodes to `Intrinsic`
 - Removal of the four old opcode enum members
 - `rand_int` intrinsic descriptor (unblocks Spec 37 without any further emit-pass changes)
@@ -232,12 +232,12 @@ Out of scope: adding new intrinsics beyond those needed for Spec 37. The library
 
 | File | Change |
 |---|---|
-| `IronLlm/Graph/StackInstruction.cs` | Add `Intrinsic` opcode; remove `ReadLine`, `ParseInt`, `Concat` |
-| `IronLlm/Graph/IntrinsicLibrary.cs` | New file: descriptors, steps, registration |
-| `IronLlm/Passes/AssemblyEmitPass.cs` | Replace 4 switch arms with single `Intrinsic` case |
-| `IronLlm/Passes/MsilGenerationPass.cs` | Replace 4 string-format arms with single `Intrinsic` case |
-| `IronLlm/Passes/StackIrPass.cs` | Update `read`, `read_int`, `print`, concat patterns to emit `Intrinsic` |
-| `IronLlm/Passes/EmbeddingPass.cs` | Remove hardcoded method-call descriptions |
+| `Specc/Graph/StackInstruction.cs` | Add `Intrinsic` opcode; remove `ReadLine`, `ParseInt`, `Concat` |
+| `Specc/Graph/IntrinsicLibrary.cs` | New file: descriptors, steps, registration |
+| `Specc/Passes/AssemblyEmitPass.cs` | Replace 4 switch arms with single `Intrinsic` case |
+| `Specc/Passes/MsilGenerationPass.cs` | Replace 4 string-format arms with single `Intrinsic` case |
+| `Specc/Passes/StackIrPass.cs` | Update `read`, `read_int`, `print`, concat patterns to emit `Intrinsic` |
+| `Specc/Passes/EmbeddingPass.cs` | Remove hardcoded method-call descriptions |
 
 ## Acceptance
 

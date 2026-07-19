@@ -6,7 +6,7 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # Accept --spec / --out passthrough, or positional legacy form
 if [[ "${1:-}" == --* ]]; then
     dotnet run \
-        --project "$REPO_ROOT/IronLlm/IronLlm.csproj" \
+        --project "$REPO_ROOT/Specc/Specc.csproj" \
         -- compile "$@"
 else
     SPEC="${1:-$REPO_ROOT/examples/FizzBuzz/FizzBuzz.md}"
@@ -20,6 +20,6 @@ else
     fi
 
     dotnet run \
-        --project "$REPO_ROOT/IronLlm/IronLlm.csproj" \
+        --project "$REPO_ROOT/Specc/Specc.csproj" \
         -- compile --spec "$SPEC" --out "$ARTIFACTS"
 fi

@@ -134,9 +134,9 @@ Edge types: `Contains`, `Executes`, `Reads`, `Writes`, `TrueBranch`, `FalseBranc
 
 ## Acceptance Criterion
 
-1. `./iron-llm examples/FizzBuzz` completes without error. No `00-extracted.spec` is written. `02-semantic-graph.json` is the first artifact.
-2. `./iron-llm examples/BubbleSort` completes and the binary produces sorted output.
-3. `./iron-llm examples/CountDown` completes and the binary produces `1..10`.
+1. `./specc examples/FizzBuzz` completes without error. No `00-extracted.spec` is written. `02-semantic-graph.json` is the first artifact.
+2. `./specc examples/BubbleSort` completes and the binary produces sorted output.
+3. `./specc examples/CountDown` completes and the binary produces `1..10`.
 4. All existing tests pass (the FizzBuzz-family `ExampleProgramTests` use hardcoded spec text and bypass `MarkdownSpecPass` — they are unaffected).
 
 ## What Is Preserved

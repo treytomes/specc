@@ -1,19 +1,19 @@
 # Spec 11 — Unit Test Suite (80% Coverage Gate)
 
 **Status:** Ready to implement  
-**Scope:** New `IronLlm.Tests/` xUnit project; coverage enforced in CI via Coverlet; updated `scripts/test.sh`
+**Scope:** New `Specc.Tests/` xUnit project; coverage enforced in CI via Coverlet; updated `scripts/test.sh`
 
 ## Goal
 
-Establish a test foundation that must pass before new features merge. The requirement: **≥ 80% line coverage** across the `IronLlm` project, measured by Coverlet and enforced in `test.sh`.
+Establish a test foundation that must pass before new features merge. The requirement: **≥ 80% line coverage** across the `Specc` project, measured by Coverlet and enforced in `test.sh`.
 
 Unit tests target only deterministic code — passes that transform one data structure into another without I/O. External-dependency passes (EmbeddingPass, AssemblyEmitPass) are excluded from the coverage denominator via `[ExcludeFromCodeCoverage]`.
 
 ## Test project layout
 
 ```
-IronLlm.Tests/
-  IronLlm.Tests.csproj
+Specc.Tests/
+  Specc.Tests.csproj
   Passes/
     ParseSpecPassTests.cs
     SemanticGraphPassTests.cs
@@ -111,7 +111,7 @@ Using a pre-built `CompilationContext` with known `StackIr`:
 `scripts/test.sh` gains a unit-test + coverage step before the end-to-end pipeline check:
 
 ```bash
-dotnet test IronLlm.Tests/IronLlm.Tests.csproj \
+dotnet test Specc.Tests/Specc.Tests.csproj \
   --collect:"XPlat Code Coverage" \
   --results-directory "$REPO_ROOT/TestResults"
 
@@ -158,4 +158,4 @@ static class Fixtures
 
 One commit: `test: add xUnit test suite with ≥80% coverage gate`
 
-Updated files: `IronLlm.slnx` (add test project), `scripts/test.sh` (add coverage step).
+Updated files: `Specc.slnx` (add test project), `scripts/test.sh` (add coverage step).

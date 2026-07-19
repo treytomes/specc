@@ -1,7 +1,7 @@
 # Spec 13 — Logging and DI Inside Passes
 
 **Status:** Ready to implement  
-**Scope:** `ICompilerPass`, all pass classes, `IronLlm.Tests` fixture updates
+**Scope:** `ICompilerPass`, all pass classes, `Specc.Tests` fixture updates
 
 ## Problem
 
@@ -21,7 +21,7 @@ The interface does not change — adding a required logger to the interface woul
 
 The DI registration in `Program.cs` already handles this automatically: `AddTransient<ICompilerPass, ParseSpecPass>()` will inject `ILogger<ParseSpecPass>` if the constructor requests it.
 
-Test construction via `new SomePass()` breaks only for passes that add the logger argument. The fixture helpers in `IronLlm.Tests` use `Microsoft.Extensions.Logging.Abstractions.NullLogger<T>.Instance` for those cases.
+Test construction via `new SomePass()` breaks only for passes that add the logger argument. The fixture helpers in `Specc.Tests` use `Microsoft.Extensions.Logging.Abstractions.NullLogger<T>.Instance` for those cases.
 
 ### 2. Per-pass logging plan
 

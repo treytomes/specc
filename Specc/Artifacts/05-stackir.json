@@ -1,0 +1,127 @@
+[
+  {
+    "Op": 11,
+    "Operand": "entry"
+  },
+  {
+    "Op": 7,
+    "Operand": "loop_test"
+  },
+  {
+    "Op": 11,
+    "Operand": "loop_test"
+  },
+  {
+    "Op": 6,
+    "Operand": "exit"
+  },
+  {
+    "Op": 11,
+    "Operand": "fizzbuzz_check"
+  },
+  {
+    "Op": 1,
+    "Operand": "n"
+  },
+  {
+    "Op": 0,
+    "Operand": "15"
+  },
+  {
+    "Op": 4
+  },
+  {
+    "Op": 0,
+    "Operand": "0"
+  },
+  {
+    "Op": 5
+  },
+  {
+    "Op": 6,
+    "Operand": "fizz_check"
+  },
+  {
+    "Op": 11,
+    "Operand": "fizz_check"
+  },
+  {
+    "Op": 1,
+    "Operand": "n"
+  },
+  {
+    "Op": 0,
+    "Operand": "3"
+  },
+  {
+    "Op": 4
+  },
+  {
+    "Op": 0,
+    "Operand": "0"
+  },
+  {
+    "Op": 5
+  },
+  {
+    "Op": 6,
+    "Operand": "buzz_check"
+  },
+  {
+    "Op": 11,
+    "Operand": "buzz_check"
+  },
+  {
+    "Op": 1,
+    "Operand": "n"
+  },
+  {
+    "Op": 0,
+    "Operand": "5"
+  },
+  {
+    "Op": 4
+  },
+  {
+    "Op": 0,
+    "Operand": "0"
+  },
+  {
+    "Op": 5
+  },
+  {
+    "Op": 6,
+    "Operand": "loop_inc"
+  },
+  {
+    "Op": 11,
+    "Operand": "print_n"
+  },
+  {
+    "Op": 1,
+    "Operand": "n"
+  },
+  {
+    "Op": 9,
+    "Operand": "Console.WriteLine(int)"
+  },
+  {
+    "Op": 7,
+    "Operand": "loop_inc"
+  },
+  {
+    "Op": 11,
+    "Operand": "loop_inc"
+  },
+  {
+    "Op": 7,
+    "Operand": "loop_test"
+  },
+  {
+    "Op": 11,
+    "Operand": "exit"
+  },
+  {
+    "Op": 10
+  }
+]

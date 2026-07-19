@@ -214,9 +214,9 @@ Passes 00–05 are identical for both targets.
 
 | File | Change |
 |------|--------|
-| `IronLlm/Passes/WatGenerationPass.cs` | New pass: stack IR → `.wat` |
-| `IronLlm/Passes/WasmAssemblyPass.cs` | New pass: `.wat` → `.wasm` via `wat2wasm` |
-| `IronLlm/Program.cs` | `--target` option; conditional pass registration |
-| `IronLlm/Passes/CompilationContext.cs` | `Target` property (`"msil"` \| `"wasm"`) |
+| `Specc/Passes/WatGenerationPass.cs` | New pass: stack IR → `.wat` |
+| `Specc/Passes/WasmAssemblyPass.cs` | New pass: `.wat` → `.wasm` via `wat2wasm` |
+| `Specc/Program.cs` | `--target` option; conditional pass registration |
+| `Specc/Passes/CompilationContext.cs` | `Target` property (`"msil"` \| `"wasm"`) |
 
 No changes to passes 00–05 or the graph layer.

@@ -1,0 +1,3 @@
+{
+  "raw": "program: FizzBuzz\n\nloop:\n  from: 1\n  to: 100\n\nbranch:\n  condition: divisible_by_15\n  divisor: 15\n  true_output: \u0022FizzBuzz\u0022\n\nbranch:\n  condition: divisible_by_3\n  divisor: 3\n  true_output: \u0022Fizz\u0022\n\nbranch:\n  condition: divisible_by_5\n  divisor: 5\n  true_output: \u0022Buzz\u0022\n\nbranch:\n  condition: default\n  true_output: \u0022{n}\u0022\n\nvariable:\n  name: n\n  type: int\n"
+}

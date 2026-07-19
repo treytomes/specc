@@ -1,7 +1,7 @@
 # Spec 15 — Array and Nested Loop Node Types
 
 **Status:** Ready to implement  
-**Scope:** `IronLlm/Graph/Nodes.cs`, `SemanticGraphPass.cs`, `GraphVisualizationPass.cs`, `EmbeddingPass.cs`, `SemanticNormalizationPass.cs`, `SemanticValidationPass.cs`
+**Scope:** `Specc/Graph/Nodes.cs`, `SemanticGraphPass.cs`, `GraphVisualizationPass.cs`, `EmbeddingPass.cs`, `SemanticNormalizationPass.cs`, `SemanticValidationPass.cs`
 
 ## Motivation
 
@@ -9,7 +9,7 @@ The current IR supports one pattern: a flat loop over a scalar variable with mod
 
 ## New Node Types
 
-Add to `IronLlm/Graph/Nodes.cs` and register the `[JsonDerivedType]` annotations on `Node`:
+Add to `Specc/Graph/Nodes.cs` and register the `[JsonDerivedType]` annotations on `Node`:
 
 ```csharp
 // An array with a fixed size and optional literal initializer values.

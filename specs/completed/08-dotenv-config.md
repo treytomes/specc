@@ -27,7 +27,7 @@ IRONLLM_EMBED_MODEL=mxbai-embed-large:latest
 IRONLLM_CHAT_MODEL=ministral-3:3b
 ```
 
-File is in the repo root at `/iron-llm/.env`. Add `.env` to `.gitignore` — it may contain a remote endpoint or API key.
+File is in the repo root at `/specc/.env`. Add `.env` to `.gitignore` — it may contain a remote endpoint or API key.
 
 ## Implementation
 
