@@ -72,7 +72,7 @@ public class NodeMlpRegistry
 
 ### `IronLlm/Passes/NodeMlpPass.cs`
 
-New pass, runs after `EmbeddingPass` (03) and before `SemanticNormalizationPass` (03b):
+New pass, runs after `SemanticNormalizationPass` (03b) and `RepositoryRetrievalPass` (03c):
 
 ```
 Name:         "03a-NodeMlp"
@@ -86,12 +86,19 @@ For each node in the graph that has a raw embedding in `context.Embeddings`:
 4. Call `registry.Refine(node, rawEmb, neighborMean)`.
 5. Replace the embedding in `context.Embeddings` with the refined vector.
 
-The pass operates in-place on `context.Embeddings` — downstream passes
-(`SemanticNormalizationPass`, `RepositoryRetrievalPass`) see refined vectors automatically.
+The pass operates in-place on `context.Embeddings`. Running after normalization and retrieval
+preserves the raw Ollama embedding space for both those passes — `SemanticNormalizationPass`
+compares against a reference corpus embedded with the same model, and `RepositoryRetrievalPass`
+compares against repository entries stored as raw vectors. Inserting the MLP before either pass
+would transform the vectors into the MLP's (initially random) output space, collapsing cosine
+similarity.
+
+After Spec 41 training, refined embeddings will be stored in the repository alongside raw ones
+so `RepositoryRetrievalPass` can optionally use them. Until then, retrieval uses raw vectors.
 
 ### Pipeline registration
 
-Register `NodeMlpPass` between `EmbeddingPass` and `RepositoryRetrievalPass` in `Program.cs`.
+Register `NodeMlpPass` after `SemanticNormalizationPass` and `RepositoryRetrievalPass` in `Program.cs`.
 
 ## Geometry check
 
