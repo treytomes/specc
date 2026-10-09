@@ -11,9 +11,9 @@ using Serilog.Events;
 var repoRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
 var dotEnv   = LoadDotEnv(Path.Combine(repoRoot, ".env"));
 
-var ollamaBase = Cfg(dotEnv, "IRONLLM_OLLAMA_BASE", "http://localhost:11434");
-var embedModel = Cfg(dotEnv, "IRONLLM_EMBED_MODEL",  "mxbai-embed-large:latest");
-var chatModel  = Cfg(dotEnv, "IRONLLM_CHAT_MODEL",   "ministral-3:3b");
+var ollamaBase = Cfg(dotEnv, "SPECC_OLLAMA_BASE", "http://localhost:11434");
+var embedModel = Cfg(dotEnv, "SPECC_EMBED_MODEL",  "mxbai-embed-large:latest");
+var chatModel  = Cfg(dotEnv, "SPECC_CHAT_MODEL",   "ministral-3:3b");
 
 // ── CLI (Spec 09) ─────────────────────────────────────────────────────────────
 var specOpt = new Option<FileInfo?>("--spec")
@@ -45,7 +45,7 @@ var runOpt = new Option<bool>("--run")
 
 var chatModelOpt = new Option<string?>("--chat-model")
 {
-    Description = "Override the chat model for this compilation (default: IRONLLM_CHAT_MODEL env / ministral-3:3b)",
+    Description = "Override the chat model for this compilation (default: SPECC_CHAT_MODEL env / ministral-3:3b)",
 };
 
 var compileCommand = new Command("compile", "Compile a .spec or .md file to a native executable")
@@ -98,7 +98,7 @@ compileCommand.SetAction(async result =>
         .MinimumLevel.Is(logLevel)
         .WriteTo.Console(outputTemplate: "[{Level:u3}] {Message:lj}{NewLine}{Exception}")
         .WriteTo.File(
-            Path.Combine(logDir, "ironllm-.log"),
+            Path.Combine(logDir, "specc-.log"),
             rollingInterval: RollingInterval.Day,
             outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff} [{Level:u3}] {Message:lj}{NewLine}{Exception}")
         .CreateLogger();

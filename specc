@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# Usage: ./iron-llm <example-folder> [extra dotnet run args...]
+# Usage: ./specc <example-folder> [extra dotnet run args...]
 #
 # Finds the .md or .spec file inside the given folder, compiles it,
 # and runs the resulting binary.
 #
 # Examples:
-#   ./iron-llm examples/CountDown
-#   ./iron-llm examples/FizzBuzz --verbose
-#   ./iron-llm examples/FizzBuzz --force 03-embeddings.json
+#   ./specc examples/CountDown
+#   ./specc examples/FizzBuzz --verbose
+#   ./specc examples/FizzBuzz --force 03-embeddings.json
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -35,7 +35,7 @@ fi
 ARTIFACTS="$FOLDER/artifacts"
 
 dotnet run \
-    --project "$REPO_ROOT/IronLlm/IronLlm.csproj" \
+    --project "$REPO_ROOT/Specc/Specc.csproj" \
     -- compile --spec "$SPEC" --out "$ARTIFACTS" "$@"
 
 # Run the compiled binary: find the first non-dll executable in artifacts

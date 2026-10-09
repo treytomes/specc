@@ -1,6 +1,7 @@
 {
-	"dotnet.defaultSolution": "IronLlm.slnx",
+	"dotnet.defaultSolution": "Specc.slnx",
 	"cSpell.words": [
+		"agentic",
 		"apphost",
 		"argmax",
 		"backpropagating",
@@ -9,14 +10,16 @@
 		"Collatz",
 		"embedder",
 		"ilasm",
-		"ironllm",
 		"ldloc",
 		"ldstr",
 		"ministral",
 		"mscorlib",
 		"msil",
+		"mxbai",
 		"ollama",
+		"qwen",
 		"serilog",
+		"specc",
 		"stloc"
 	]
 }

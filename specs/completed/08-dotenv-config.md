@@ -22,9 +22,9 @@ Load configuration from a `.env` file at the repo root (not the project director
 ## `.env` File
 
 ```
-IRONLLM_OLLAMA_BASE=http://localhost:11434
-IRONLLM_EMBED_MODEL=mxbai-embed-large:latest
-IRONLLM_CHAT_MODEL=ministral-3:3b
+SPECC_OLLAMA_BASE=http://localhost:11434
+SPECC_EMBED_MODEL=mxbai-embed-large:latest
+SPECC_CHAT_MODEL=ministral-3:3b
 ```
 
 File is in the repo root at `/specc/.env`. Add `.env` to `.gitignore` — it may contain a remote endpoint or API key.

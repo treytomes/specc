@@ -1,7 +1,7 @@
 bin
 obj
 TestResults
-IronLlm/Artifacts
-IronLlm/Spec
+Specc/Artifacts
+Specc/Spec
 .env
 repository/

@@ -6,7 +6,7 @@ Incomplete.
 
 ## Context
 
-The current repository is episodic: each `CompiledUnit` is a specific compilation event — a program name, a raw spec text, a set of tags, an assertion count. Retrieval is a tag-overlap query that returns matching instances. Nothing generalises across entries.
+The current repository is episodic: each `CompiledUnit` is a specific compilation event — a program name, a raw spec text, a set of tags, an assertion count. Retrieval is a tag-overlap query that returns matching instances. Nothing generalizes across entries.
 
 This spec investigates what it would mean for the repository to have *semantic* memory — to extract abstract structure from accumulated episodes rather than just storing them. The goal is not to replace episodic storage but to build a second layer on top of it: a graph whose nodes are structural patterns, whose edges are relationships between those patterns, and whose entries are grounded in the episodic records that attest them.
 

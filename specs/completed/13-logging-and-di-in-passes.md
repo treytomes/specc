@@ -103,7 +103,7 @@ public static StackIrPass MakeStackIrPass() =>
 Serilog is already wired in `Program.cs` with two sinks:
 
 - **Console** — `[INF] message` format, human-readable at a glance
-- **Rolling file** — `<artifacts-dir>/logs/ironllm-YYYYMMDD.log`, structured template with timestamps; rolls daily
+- **Rolling file** — `<artifacts-dir>/logs/specc-YYYYMMDD.log`, structured template with timestamps; rolls daily
 
 All `ILogger<T>` calls from passes flow through Serilog automatically. No sink changes are needed as part of this spec.
 

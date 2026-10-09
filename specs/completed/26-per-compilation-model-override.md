@@ -5,7 +5,7 @@
 
 ## Motivation
 
-The chat model is currently fixed at compile time via `IRONLLM_CHAT_MODEL` (env var / `.env`). Switching models to test a different extraction quality — for example, comparing `ministral-3:3b` vs `gemma4:e2b` on the same `.md` file — requires editing `.env`, re-running, restoring `.env`. That workflow is awkward and can't be done from a single shell command.
+The chat model is currently fixed at compile time via `SPECC_CHAT_MODEL` (env var / `.env`). Switching models to test a different extraction quality — for example, comparing `ministral-3:3b` vs `gemma4:e2b` on the same `.md` file — requires editing `.env`, re-running, restoring `.env`. That workflow is awkward and can't be done from a single shell command.
 
 A `--chat-model` CLI flag lets the caller override the chat model for one compilation without touching `.env`. This is the right granularity: per-compilation, not per-pass (all LLM calls within one compilation use the same model).
 
@@ -18,7 +18,7 @@ Add a new option to the `compile` command:
 ```csharp
 var chatModelOpt = new Option<string?>("--chat-model")
 {
-    Description = "Override the chat model for this compilation (default: IRONLLM_CHAT_MODEL env / ministral-3:3b)",
+    Description = "Override the chat model for this compilation (default: SPECC_CHAT_MODEL env / ministral-3:3b)",
 };
 ```
 
@@ -40,7 +40,7 @@ Pass `effectiveChatModel` to `OllamaChatClient` instead of `chatModel`:
     new OllamaChatClient(new Uri(ollamaBase), effectiveChatModel))
 ```
 
-The override applies only within the current process. `.env` and `IRONLLM_CHAT_MODEL` are unaffected.
+The override applies only within the current process. `.env` and `SPECC_CHAT_MODEL` are unaffected.
 
 ### scripts/run.sh
 

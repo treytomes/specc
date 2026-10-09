@@ -18,7 +18,7 @@
 Replace the current positional-argument convention with explicit options:
 
 ```
-ironllm compile [options]
+specc compile [options]
 
 Options:
   --spec <path>       Path to the .spec file [default: examples/FizzBuzz/FizzBuzz.spec]
